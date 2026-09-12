@@ -1,0 +1,81 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: |
+          npx tsc -p packages/shared/tsconfig.json
+          npx tsc -p packages/indicators/tsconfig.json
+          npx tsc -p apps/worker/tsconfig.json
+          npx tsc -p apps/web/tsconfig.json
+
+      - name: Test indicators
+        working-directory: packages/indicators
+        run: npx vitest run
+
+      - name: Test worker
+        working-directory: apps/worker
+        run: npx vitest run
+
+      - name: Build web
+        working-directory: apps/web
+        run: npx vite build
+
+  deploy:
+    needs: lint-test-build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared + indicators
+        run: |
+          npx tsc -p packages/shared/tsconfig.json
+          npx tsc -p packages/indicators/tsconfig.json
+
+      - name: Deploy Worker
+        working-directory: apps/worker
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Build web
+        working-directory: apps/web
+        run: npx vite build
+        env:
+          VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: crypto-monitor
+          directory: apps/web/dist

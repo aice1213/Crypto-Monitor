@@ -1,0 +1,27 @@
+{
+  "name": "crypto-monitor",
+  "version": "1.0.1",
+  "private": true,
+  "description": "加密货币实时监控与AI策略分析平台",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=web",
+    "dev:worker": "npm run dev --workspace=worker",
+    "build": "npm run build --workspace=shared && npm run build --workspace=indicators && npm run build --workspace=worker && npm run build --workspace=web",
+    "test": "npm run test --workspace=indicators && npm run test --workspace=worker",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc -b"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0"
+  }
+}

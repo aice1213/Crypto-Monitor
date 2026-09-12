@@ -1,0 +1,28 @@
+name = "crypto-monitor-worker"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare Account ID，可在 Dashboard 首页右侧获取
+# 或运行 `npx wrangler whoami` 查看
+account_id = "d95b04d0dcf147b40c75dd809e7cfd1d"
+
+[vars]
+GATEIO_BASE = "https://api.gateio.ws"
+AI_PROVIDER = "workers-ai"
+AI_ENABLED = "true"
+AI_DAILY_LIMIT = "500"
+# 逗号分隔的 CORS 白名单域名（含端口）
+ALLOWED_ORIGINS = "https://<your-project>.pages.dev"
+
+# KV 命名空间：先运行 `npx wrangler kv namespace create CRYPTO_CACHE` 创建
+# 将返回的 id 填入下方
+[[kv_namespaces]]
+binding = "CRYPTO_CACHE"
+id = "78f38a660d6b477dab99fd9299883398"
+
+[ai]
+binding = "AI"
+
+[triggers]
+crons = []

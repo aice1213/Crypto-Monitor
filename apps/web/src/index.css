@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+@layer utilities {
+  .flash-up {
+    animation: flashUp 0.5s ease-out;
+  }
+  .flash-down {
+    animation: flashDown 0.5s ease-out;
+  }
+  @keyframes flashUp {
+    0% {
+      color: #00e676;
+    }
+    100% {
+      color: inherit;
+    }
+  }
+  @keyframes flashDown {
+    0% {
+      color: #ff5252;
+    }
+    100% {
+      color: inherit;
+    }
+  }
+}
