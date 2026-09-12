@@ -5,6 +5,9 @@ dist
 *.log
 .env
 .env.local
+.env.development
+.env.production
+.env.*.local
 coverage
 playwright-report
 test-results
