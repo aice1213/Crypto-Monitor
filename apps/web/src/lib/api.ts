@@ -12,7 +12,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
+  const timer = setTimeout(() => controller.abort(), 15000);
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       ...init,

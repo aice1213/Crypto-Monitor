@@ -27,7 +27,9 @@ class TokenBucket {
   }
 }
 
+// 个人监控工具，放宽限流以适配多标的并发轮询
 const bucket = new TokenBucket(10, 20);
+
 
 export function rateLimit(): boolean {
   return bucket.tryConsume();

@@ -24,5 +24,10 @@ id = "78f38a660d6b477dab99fd9299883398"
 [ai]
 binding = "AI"
 
+# 自定义域名路由，绕过 workers.dev 在部分网络的屏蔽
+routes = [
+  { pattern = "smartfield.dpdns.org/api/*", zone_id = "dbeb10ef1215d62e36229179323d6490" }
+]
+
 [triggers]
 crons = []
