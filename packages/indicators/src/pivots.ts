@@ -70,13 +70,17 @@ export function supportResistance(
 
   if (resistances.length < 3) {
     const emaUp = ema99Last > currentPrice ? ema99Last : ema99Last * 1.008;
-    if (emaUp > currentPrice) resistances.push(emaUp);
+    if (emaUp > currentPrice && !resistances.includes(emaUp)) resistances.push(emaUp);
   }
   if (supports.length < 3) {
     const emaDown = ema99Last < currentPrice ? ema99Last : ema99Last * 0.992;
-    if (emaDown < currentPrice) supports.push(emaDown);
+    if (emaDown < currentPrice && !supports.includes(emaDown)) supports.push(emaDown);
   }
 
+  resistances.sort((a, b) => a - b);
+  supports.sort((a, b) => b - a);
+  resistances = dedupe(resistances);
+  supports = dedupe(supports);
   resistances.sort((a, b) => a - b);
   supports.sort((a, b) => b - a);
 
@@ -84,6 +88,18 @@ export function supportResistance(
     support: supports.slice(0, 3),
     resistance: resistances.slice(0, 3),
   };
+}
+
+function dedupe(prices: number[]): number[] {
+  const sorted = [...prices].sort((a, b) => a - b);
+  const result: number[] = [];
+  for (const p of sorted) {
+    const last = result[result.length - 1];
+    if (last == null || Math.abs(p - last) / Math.max(Math.abs(p), Math.abs(last)) > 0.0001) {
+      result.push(p);
+    }
+  }
+  return result;
 }
 
 export function ema99LastValue(closes: number[]): number {

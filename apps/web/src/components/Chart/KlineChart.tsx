@@ -4,6 +4,8 @@ import {
   type Time,
   ColorType,
   CrosshairMode,
+  type IChartApi,
+  type IPriceLine,
 } from 'lightweight-charts';
 import type { CandleDto, IndicatorSnapshotDto } from '@crypto-monitor/shared';
 import { ema } from '@crypto-monitor/indicators';
@@ -13,11 +15,25 @@ interface Props {
   snapshot: IndicatorSnapshotDto;
 }
 
+type ChartRef = {
+  chart: IChartApi;
+  candleSeries: ReturnType<IChartApi['addCandlestickSeries']>;
+  ema7: ReturnType<IChartApi['addLineSeries']>;
+  ema25: ReturnType<IChartApi['addLineSeries']>;
+  ema99: ReturnType<IChartApi['addLineSeries']>;
+  macdHist: ReturnType<IChartApi['addHistogramSeries']>;
+  dif: ReturnType<IChartApi['addLineSeries']>;
+  dea: ReturnType<IChartApi['addLineSeries']>;
+  priceLines: IPriceLine[];
+};
+
 export function KlineChart({ candles, snapshot }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<ChartRef | null>(null);
+  const fitOnceRef = useRef(false);
 
   useEffect(() => {
-    if (!containerRef.current || candles.length === 0) return;
+    if (!containerRef.current) return;
 
     const chart = createChart(containerRef.current, {
       layout: {
@@ -44,94 +60,28 @@ export function KlineChart({ candles, snapshot }: Props) {
       wickDownColor: '#ef5350',
     });
 
-    candleSeries.setData(
-      candles.map((c) => ({
-        time: c.time as Time,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-      })),
-    );
+    const ema7 = chart.addLineSeries({ color: '#ffb300', lineWidth: 1 });
+    const ema25 = chart.addLineSeries({ color: '#29b6f6', lineWidth: 1 });
+    const ema99 = chart.addLineSeries({ color: '#ab47bc', lineWidth: 1 });
 
-    const closes = candles.map((c) => c.close);
-    const addEma = (period: number, color: string) => {
-      const e = ema(closes, period);
-      const line = chart.addLineSeries({ color, lineWidth: 1 });
-      line.setData(
-        candles
-          .map((c, i) => ({ time: c.time as Time, value: e[i] }))
-          .filter((d) => !Number.isNaN(d.value)),
-      );
-    };
-    addEma(7, '#ffb300');
-    addEma(25, '#29b6f6');
-    addEma(99, '#ab47bc');
-
-    snapshot.resistance.forEach((price) => {
-      candleSeries.createPriceLine({
-        price,
-        color: '#ef5350',
-        lineWidth: 1,
-        lineStyle: 2,
-        axisLabelVisible: true,
-        title: 'R',
-      });
-    });
-    snapshot.support.forEach((price) => {
-      candleSeries.createPriceLine({
-        price,
-        color: '#26a69a',
-        lineWidth: 1,
-        lineStyle: 2,
-        axisLabelVisible: true,
-        title: 'S',
-      });
-    });
-
-    // MACD pane
+    const macdHist = chart.addHistogramSeries({ priceScaleId: 'macd' });
     chart.priceScale('macd').applyOptions({
       scaleMargins: { top: 0.7, bottom: 0.05 },
     });
-    const ema12 = ema(closes, 12);
-    const ema26 = ema(closes, 26);
-    const dif = closes.map((_, i) =>
-      !Number.isNaN(ema12[i]) && !Number.isNaN(ema26[i]) ? ema12[i] - ema26[i] : NaN,
-    );
-    const validStart = dif.findIndex((v) => !Number.isNaN(v));
-    const validDif = dif.filter((v) => !Number.isNaN(v));
-    const deaArr = ema(validDif, 9);
-    const dea: number[] = new Array(closes.length).fill(NaN);
-    let di = 0;
-    for (let i = validStart; i < closes.length; i++) {
-      if (!Number.isNaN(dif[i])) dea[i] = deaArr[di++];
-    }
+    const dif = chart.addLineSeries({ color: '#29b6f6', lineWidth: 1, priceScaleId: 'macd' });
+    const dea = chart.addLineSeries({ color: '#ffb300', lineWidth: 1, priceScaleId: 'macd' });
 
-    const macdHist = chart.addHistogramSeries({ priceScaleId: 'macd' });
-    macdHist.setData(
-      candles
-        .map((c, i) => {
-          const h =
-            !Number.isNaN(dif[i]) && !Number.isNaN(dea[i]) ? (dif[i] - dea[i]) * 2 : 0;
-          return { time: c.time as Time, value: h, color: h >= 0 ? '#26a69a' : '#ef5350' };
-        })
-        .filter((d) => !Number.isNaN(d.value)),
-    );
-
-    const difLine = chart.addLineSeries({ color: '#29b6f6', lineWidth: 1, priceScaleId: 'macd' });
-    difLine.setData(
-      candles
-        .map((c, i) => ({ time: c.time as Time, value: dif[i] }))
-        .filter((d) => !Number.isNaN(d.value)),
-    );
-    const deaLine = chart.addLineSeries({ color: '#ffb300', lineWidth: 1, priceScaleId: 'macd' });
-    deaLine.setData(
-      candles
-        .map((c, i) => ({ time: c.time as Time, value: dea[i] }))
-        .filter((d) => !Number.isNaN(d.value)),
-    );
-
-    chart.timeScale().fitContent();
+    chartRef.current = {
+      chart,
+      candleSeries,
+      ema7,
+      ema25,
+      ema99,
+      macdHist,
+      dif,
+      dea,
+      priceLines: [],
+    };
 
     const handleResize = () => {
       if (containerRef.current) {
@@ -143,7 +93,102 @@ export function KlineChart({ candles, snapshot }: Props) {
     return () => {
       window.removeEventListener('resize', handleResize);
       chart.remove();
+      chartRef.current = null;
     };
+  }, []);
+
+
+  useEffect(() => {
+    const ref = chartRef.current;
+    if (!ref || candles.length === 0) return;
+
+    const closes = candles.map((c) => c.close);
+    const ema7Arr = ema(closes, 7);
+    const ema25Arr = ema(closes, 25);
+    const ema99Arr = ema(closes, 99);
+    const ema12 = ema(closes, 12);
+    const ema26 = ema(closes, 26);
+    const difArr = closes.map((_, i) =>
+      !Number.isNaN(ema12[i]) && !Number.isNaN(ema26[i]) ? ema12[i] - ema26[i] : NaN,
+    );
+    const validStart = difArr.findIndex((v) => !Number.isNaN(v));
+    const validDif = difArr.filter((v) => !Number.isNaN(v));
+    const deaArr = ema(validDif, 9);
+    const dea = new Array<number>(closes.length).fill(NaN);
+    let di = 0;
+    for (let i = validStart; i < closes.length; i++) {
+      if (!Number.isNaN(difArr[i])) dea[i] = deaArr[di++];
+    }
+
+    ref.candleSeries.setData(
+      candles.map((c) => ({
+        time: c.time as Time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      })),
+    );
+
+    ref.ema7.setData(
+      candles.map((c, i) => ({ time: c.time as Time, value: ema7Arr[i] })).filter((d) => !Number.isNaN(d.value)),
+    );
+    ref.ema25.setData(
+      candles.map((c, i) => ({ time: c.time as Time, value: ema25Arr[i] })).filter((d) => !Number.isNaN(d.value)),
+    );
+    ref.ema99.setData(
+      candles.map((c, i) => ({ time: c.time as Time, value: ema99Arr[i] })).filter((d) => !Number.isNaN(d.value)),
+    );
+
+    ref.macdHist.setData(
+      candles
+        .map((c, i) => {
+          const h = !Number.isNaN(difArr[i]) && !Number.isNaN(dea[i]) ? (difArr[i] - dea[i]) * 2 : 0;
+          return { time: c.time as Time, value: h, color: h >= 0 ? '#26a69a' : '#ef5350' };
+        })
+        .filter((d) => !Number.isNaN(d.value)),
+    );
+
+    ref.dif.setData(
+      candles.map((c, i) => ({ time: c.time as Time, value: difArr[i] })).filter((d) => !Number.isNaN(d.value)),
+    );
+    ref.dea.setData(
+      candles.map((c, i) => ({ time: c.time as Time, value: dea[i] })).filter((d) => !Number.isNaN(d.value)),
+    );
+
+    ref.priceLines.forEach((line) => ref.candleSeries.removePriceLine(line));
+    ref.priceLines = [];
+
+    snapshot.resistance.forEach((price) => {
+      ref.priceLines.push(
+        ref.candleSeries.createPriceLine({
+          price,
+          color: '#ef5350',
+          lineWidth: 1,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: 'R',
+        }),
+      );
+    });
+
+    snapshot.support.forEach((price) => {
+      ref.priceLines.push(
+        ref.candleSeries.createPriceLine({
+          price,
+          color: '#26a69a',
+          lineWidth: 1,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: 'S',
+        }),
+      );
+    });
+
+    if (!fitOnceRef.current) {
+      ref.chart.timeScale().fitContent();
+      fitOnceRef.current = true;
+    }
   }, [candles, snapshot]);
 
   return <div ref={containerRef} className="w-full" />;

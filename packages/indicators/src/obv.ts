@@ -1,6 +1,16 @@
 import type { ObvResult, ObvFlow } from '@crypto-monitor/shared';
 import { sma, linearRegressionSlope } from './ema.js';
 
+function volumeMetrics(volumes: number[]): { ratio: number; avg20ChangePct: number } {
+  if (volumes.length === 0) return { ratio: 1, avg20ChangePct: 0 };
+  const current = volumes[volumes.length - 1] ?? 0;
+  const window = volumes.slice(-20);
+  const avg20 = window.reduce((a, b) => a + b, 0) / window.length;
+  const ratio = avg20 > 0 ? current / avg20 : 1;
+  const avg20ChangePct = avg20 > 0 ? (current - avg20) / avg20 * 100 : 0;
+  return { ratio, avg20ChangePct };
+}
+
 /**
  * OBV 能量潮
  * obv += sign(close - prevClose) * volume
@@ -23,6 +33,7 @@ export function obv(closes: number[], volumes: number[]): ObvResult[] {
 
   for (let i = 0; i < n; i++) {
     const slope = linearRegressionSlope(obvArr.slice(0, i + 1), 5);
+    const { ratio, avg20ChangePct } = volumeMetrics(volumes.slice(0, i + 1));
     let flow: ObvFlow = 'BALANCED';
     if (!Number.isNaN(ma20[i])) {
       if (obvArr[i] > ma20[i] && slope > 0) flow = 'INFLOW';
@@ -32,6 +43,8 @@ export function obv(closes: number[], volumes: number[]): ObvResult[] {
       value: obvArr[i],
       ma20: Number.isNaN(ma20[i]) ? obvArr[i] : ma20[i],
       flow,
+      volumeRatio: ratio,
+      volumeAvg20ChangePct: avg20ChangePct,
     });
   }
   return result;

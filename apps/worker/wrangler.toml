@@ -12,8 +12,8 @@ GATEIO_BASE = "https://api.gateio.ws"
 AI_PROVIDER = "workers-ai"
 AI_ENABLED = "true"
 AI_DAILY_LIMIT = "500"
-# 逗号分隔的 CORS 白名单域名（含端口）
-ALLOWED_ORIGINS = "https://<your-project>.pages.dev"
+# CORS 白名单：留空表示允许所有来源
+ALLOWED_ORIGINS = ""
 
 # KV 命名空间：先运行 `npx wrangler kv namespace create CRYPTO_CACHE` 创建
 # 将返回的 id 填入下方

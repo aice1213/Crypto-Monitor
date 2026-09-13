@@ -64,11 +64,18 @@ describe('computeSnapshot', () => {
     expect(snap.ema7).toBeGreaterThan(0);
     expect(snap.ema25).toBeGreaterThan(0);
     expect(snap.rsi14).toBeGreaterThanOrEqual(0);
-    expect(snap.rsi14).toBeLessThanOrEqual(100);
+    expect(snap.rsi14).toBeLessThan(100);
     expect(snap.trend.score).toBeGreaterThanOrEqual(-100);
     expect(snap.trend.score).toBeLessThanOrEqual(100);
     expect(snap.support.length).toBeLessThanOrEqual(3);
     expect(snap.resistance.length).toBeLessThanOrEqual(3);
+  });
+
+  it('支撑与阻力不返回重复价位', () => {
+    const candles = genCandles(160, 100, 0.05);
+    const snap = computeSnapshot(candles, '15m');
+    expect(new Set(snap.support).size).toBe(snap.support.length);
+    expect(new Set(snap.resistance).size).toBe(snap.resistance.length);
   });
 });
 

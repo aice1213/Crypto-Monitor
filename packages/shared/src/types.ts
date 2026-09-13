@@ -46,6 +46,8 @@ export interface ObvResult {
   value: number;
   ma20: number;
   flow: ObvFlow;
+  volumeRatio: number;
+  volumeAvg20ChangePct: number;
 }
 
 export interface TrendResult {

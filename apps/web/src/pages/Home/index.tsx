@@ -14,6 +14,7 @@ export function Home() {
   const symbols = useWatchlistStore((s) => s.symbols);
   const tickers = useWatchlistStore((s) => s.tickers);
   const alerts = useWatchlistStore((s) => s.alerts);
+  const snapshots = useWatchlistStore((s) => s.snapshots);
   const priceFlash = useWatchlistStore((s) => s.priceFlash);
   const addSymbol = useWatchlistStore((s) => s.addSymbol);
   const removeSymbol = useWatchlistStore((s) => s.removeSymbol);
@@ -24,19 +25,32 @@ export function Home() {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
 
-  const pollAll = useCallback(async () => {
+  const pollTickers = useCallback(async () => {
+    // 高频：只拉 ticker（轻量）
     await Promise.all(
       symbols.map(async (symbol) => {
         try {
-          const [ticker, candles15m, candles1h, funding, stats] = await Promise.all([
-            api.getTicker(symbol).catch(() => null),
+          const ticker = await api.getTicker(symbol).catch(() => null);
+          if (ticker) setTicker(symbol, ticker);
+        } catch {
+          // ignore
+        }
+      }),
+    );
+  }, [symbols, setTicker]);
+
+  const pollHeavy = useCallback(async () => {
+    // 低频：拉 candles + funding + stats（重量级）
+    await Promise.all(
+      symbols.map(async (symbol) => {
+        try {
+          const [candles15m, candles1h, funding, stats] = await Promise.all([
             api.getCandles(symbol, '15m').catch(() => null),
             api.getCandles(symbol, '1h').catch(() => null),
             api.getFunding(symbol).catch(() => null),
             api.getStats(symbol).catch(() => null),
           ]);
 
-          if (ticker) setTicker(symbol, ticker);
           if (candles15m) {
             setSnapshot(symbol, candles15m.snapshot);
             const alert = buildAlert({
@@ -52,9 +66,10 @@ export function Home() {
         }
       }),
     );
-  }, [symbols, setTicker, setAlert, setSnapshot]);
+  }, [symbols, setAlert, setSnapshot]);
 
-  usePolling(pollAll);
+  usePolling(pollTickers, 3000); // ticker 3s
+  usePolling(pollHeavy, 15000); // 指标 15s
 
   const handleAdd = async () => {
     setError('');
@@ -143,6 +158,7 @@ export function Home() {
                 symbol={symbol}
                 ticker={tickers[symbol]}
                 alert={alerts[symbol]}
+                snapshot={snapshots[symbol]}
                 flash={priceFlash[symbol]}
                 onRemove={removeSymbol}
               />
