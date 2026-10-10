@@ -425,6 +425,7 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
 
   const price = current ?? snapshot.ema25;
   const atrPct = price > 0 ? price * 0.005 : 0; // 动态 ATR% ≈ 0.5%
+  const zone = atrPct * 1.5; // 进场区带宽 = 1.5×ATR
 
   // ── 动态触发条件 ──
   const longNearSupport =
@@ -445,9 +446,11 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
   // ── 动作：只能来自引擎 plan ──
   const action = plan ? (plan.side === 'LONG' ? '做多' : '做空') : '观望';
 
-  // ── 多方向计划（总是产出，供渲染） ──
-  const longEntry = levels.immediateSupportValue ?? price;
-  const longSL = levels.keySupportValue ?? longEntry - atrPct * 1.5;
+  // ── 做多进场区 ──
+  const longZoneHi = levels.immediateSupportValue ?? price;
+  const longZoneLo = longZoneHi - zone;
+  const longEntry = (longZoneHi + longZoneLo) / 2;
+  const longSL = levels.keySupportValue ?? longZoneLo - zone * 0.5;
   const longTP1 = levels.immediateSupportValue && levels.upperResistanceValue
     ? (levels.immediateSupportValue + levels.upperResistanceValue) / 2
     : longEntry + atrPct * 2;
@@ -456,9 +459,11 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
     ? Math.round(((longTP1 - longEntry) / (longEntry - longSL)) * 100) / 100
     : 0;
 
-  // ── 空方向计划（总是产出，供渲染） ──
-  const shortEntry = levels.upperResistanceValue ?? price;
-  const shortSL = levels.upperResistanceValue ? levels.upperResistanceValue + atrPct * 1.5 : price + atrPct * 1.5;
+  // ── 做空进场区 ──
+  const shortZoneLo = levels.upperResistanceValue ?? price;
+  const shortZoneHi = shortZoneLo + zone;
+  const shortEntry = (shortZoneLo + shortZoneHi) / 2;
+  const shortSL = shortZoneHi + zone * 0.5;
   const shortTP1 = levels.keySupportValue ?? shortEntry - atrPct * 2;
   const shortTP2 = levels.downsideRiskValue ?? shortEntry - atrPct * 3;
   const shortRR = shortSL > 0
@@ -468,6 +473,7 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
   return {
     action,
     long: [
+      `进场区 ${fmtLevel(longZoneLo)}–${fmtLevel(longZoneHi)}`,
       `价格接近最近支撑（${levels.immediateSupport}）${longNearSupport ? '✓' : '✗'}`,
       `站上 ${levels.upperResistance} 突破确认`,
       `量价无背离，量比≥0.8${longVolOk ? ' ✓' : ' ✗'}${!longNoBearDivergence ? ' · 巨量出货⚠️' : ''}`,
@@ -476,6 +482,7 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
       longMacdOk ? 'MACD 柱线已转正 ✓' : '等 MACD 柱线转正 ✗',
     ],
     short: [
+      `进场区 ${fmtLevel(shortZoneLo)}–${fmtLevel(shortZoneHi)}`,
       `价格接近最近阻力（${levels.upperResistance}）${shortNearResistance ? '✓' : '✗'}`,
       `跌破 ${levels.immediateSupport} 确认转弱`,
       `放量确认，量比≥0.8${shortVolOk ? ' ✓' : ' ✗'}`,
@@ -484,14 +491,16 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
       shortMacdOk ? 'MACD 柱线已转负 ✓' : '等 MACD 柱线转负 ✗',
     ],
     longPlan: {
-      entry: fmtLevel(longEntry),
+      entryLow: fmtLevel(longZoneLo),
+      entryHigh: fmtLevel(longZoneHi),
       sl: fmtLevel(longSL),
       tp1: fmtLevel(longTP1),
       tp2: fmtLevel(longTP2),
       rr: longRR.toFixed(2),
     },
     shortPlan: {
-      entry: fmtLevel(shortEntry),
+      entryLow: fmtLevel(shortZoneLo),
+      entryHigh: fmtLevel(shortZoneHi),
       sl: fmtLevel(shortSL),
       tp1: fmtLevel(shortTP1),
       tp2: fmtLevel(shortTP2),
