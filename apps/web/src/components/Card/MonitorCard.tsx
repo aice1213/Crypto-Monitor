@@ -1,91 +1,34 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { TickerDto, AlertSnapshotDto, IndicatorSnapshotDto } from '@crypto-monitor/shared';
-import { RSI_OVERBOUGHT, RSI_OVERSOLD, LONG_SHORT_RATIO_HIGH, LONG_SHORT_RATIO_LOW } from '@crypto-monitor/shared';
+import type { TickerDto, AlertSnapshotDto, IndicatorSnapshotDto, FundingRateDto } from '@crypto-monitor/shared';
+import { fmtPrice } from '@crypto-monitor/shared';
 import { hasAlert } from '../../lib/alert';
+import { rsiLine, sentimentLine, tfLine, volumePriceLine } from '../../lib/cardText';
+import { useWatchlistStore } from '../../store/watchlist';
 
 interface Props {
   symbol: string;
   ticker?: TickerDto;
   alert?: AlertSnapshotDto;
   snapshot?: IndicatorSnapshotDto;
+  funding?: FundingRateDto;
   flash?: 'up' | 'down' | null;
   onRemove: (symbol: string) => void;
 }
 
 function fmtPct(v: number): string {
-  return `${v.toFixed(4)}%`;
+  return `${(v * 100).toFixed(4)}%`;
 }
 
 function fmtRatio(v: number): string {
   return v.toFixed(2);
 }
 
-function fundingMeaning(rate: number): { text: string; tone: 'neutral' | 'warn' | 'danger' | 'good' } {
-  if (Math.abs(rate) < 0.0001) return { text: '动能衰竭', tone: 'warn' };
-  if (rate > 0.0005) return { text: '多头溢价强', tone: 'danger' };
-  if (rate < -0.0005) return { text: '空头溢价强', tone: 'danger' };
-  if (rate > 0) return { text: '多头占优', tone: 'neutral' };
-  return { text: '空头占优', tone: 'neutral' };
-}
-
-function sentimentLine(rate: number, ratio: number): { text: string; tone: 'neutral' | 'warn' | 'danger' } {
-  const longCrowded = ratio > LONG_SHORT_RATIO_HIGH || rate > 0.0005;
-  const shortCrowded = ratio < LONG_SHORT_RATIO_LOW || rate < -0.0005;
-  if (longCrowded && ratio > 2.2) return { text: '多头极度拥挤', tone: 'danger' };
-  if (longCrowded) return { text: '多头拥挤', tone: 'warn' };
-  if (shortCrowded && ratio < 0.45) return { text: '空头极度拥挤', tone: 'danger' };
-  if (shortCrowded) return { text: '空头拥挤', tone: 'warn' };
-  return { text: '仓位均衡', tone: 'neutral' };
-}
-
-function volumePriceLine(divergence: AlertSnapshotDto['volumePriceDivergence'], volumeRatio: number, changePct: number): {
-  text: string;
-  tone: 'neutral' | 'warn';
-} {
-  const ratioLabel =
-    volumeRatio < 0.5
-      ? '地量'
-      : volumeRatio < 0.8
-        ? '缩量'
-        : volumeRatio <= 1.2
-          ? '平量'
-          : '放量';
-
-  const data = `量比${volumeRatio.toFixed(2)} · 20期${changePct >= 0 ? '+' : ''}${changePct.toFixed(1)}%`;
-
-  if (divergence === 'BEARISH_DIVERGENCE') {
-    return { text: `价涨量缩 · ${data}`, tone: 'warn' };
-  }
-  if (divergence === 'BULLISH_DIVERGENCE') {
-    return { text: `价跌量增 · ${data}`, tone: 'warn' };
-  }
-  if (ratioLabel === '地量') {
-    return { text: `地量 · ${data}`, tone: 'warn' };
-  }
-  if (ratioLabel === '缩量') {
-    return { text: `缩量 · ${data}`, tone: 'warn' };
-  }
-  if (ratioLabel === '放量') {
-    return { text: `放量 · ${data}`, tone: 'warn' };
-  }
-  return { text: `平量 · ${data}`, tone: 'neutral' };
-}
-
-function tfLine(conflict: boolean): { text: string; tone: 'neutral' | 'warn' } {
-  if (conflict) return { text: '15m≠1h，未共振', tone: 'warn' };
-  return { text: '多周期一致', tone: 'neutral' };
-}
-
-function rsiLine(rsi: number): { text: string; tone: 'neutral' | 'warn' | 'danger' } {
-  if (rsi >= RSI_OVERBOUGHT) return { text: `RSI ${rsi.toFixed(1)} · 超买`, tone: 'danger' };
-  if (rsi <= RSI_OVERSOLD) return { text: `RSI ${rsi.toFixed(1)} · 超卖`, tone: 'danger' };
-  return { text: `RSI ${rsi.toFixed(1)} · 中性`, tone: 'neutral' };
-}
-
-export function MonitorCard({ symbol, ticker, alert, snapshot, flash, onRemove }: Props) {
+export function MonitorCard({ symbol, ticker, alert, snapshot, funding, flash, onRemove }: Props) {
   const navigate = useNavigate();
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const storeFunding = useWatchlistStore((s) => s.funding[symbol]);
+  const fundingValue = funding ?? storeFunding;
 
   const alertActive = alert ? hasAlert(alert) : false;
   const insufficient = alert?.dataQuality === 'INSUFFICIENT';
@@ -93,11 +36,24 @@ export function MonitorCard({ symbol, ticker, alert, snapshot, flash, onRemove }
   const changePct = ticker ? (ticker.change24h * 100).toFixed(2) : '--';
   const changePositive = (ticker?.change24h ?? 0) >= 0;
 
-  const funding = alert ? fundingMeaning(alert.fundingRate) : { text: '--', tone: 'neutral' as const };
-  const sentiment = alert ? sentimentLine(alert.fundingRate, alert.longShortRatio) : { text: '--', tone: 'neutral' as const };
-  const volumePrice = alert ? volumePriceLine(alert.volumePriceDivergence, snapshot?.obv.volumeRatio ?? 1, snapshot?.obv.volumeAvg20ChangePct ?? 0) : { text: '--', tone: 'neutral' as const };
-  const tf = alert ? tfLine(alert.multiTfConflict) : { text: '--', tone: 'neutral' as const };
-  const rsi = alert ? rsiLine(snapshot?.rsi14 ?? (alert.extremeAlert === 'OVERBOUGHT' ? RSI_OVERBOUGHT + 1 : alert.extremeAlert === 'OVERSOLD' ? RSI_OVERSOLD - 1 : 50)) : { text: 'RSI --', tone: 'neutral' as const };
+  const sentiment = alert
+    ? sentimentLine(alert.fundingSignal, alert.fundingRate, alert.longShortRatio)
+    : { text: '--', tone: 'neutral' as const };
+  // 量比的涨跌判断必须用**价格**涨跌幅，不能用成交量变化（volumeAvg20ChangePct）冒充
+  const volumePrice = alert
+    ? volumePriceLine(alert.volumePriceDivergence, snapshot?.obv.volumeRatio ?? 0, ticker?.change24h ?? 0)
+    : { text: '--', tone: 'neutral' as const };
+  const tf = alert ? tfLine(alert.multiTfState, alert.multiTfConflict) : { text: '--', tone: 'neutral' as const };
+  // 指标快照未就绪时只显示状态，绝不编造一个 RSI 数值
+  const rsi = !alert
+    ? { text: 'RSI --', tone: 'neutral' as const }
+    : snapshot
+      ? rsiLine(snapshot.rsi14)
+      : alert.extremeAlert === 'OVERBOUGHT'
+        ? { text: 'RSI · 超买', tone: 'danger' as const }
+        : alert.extremeAlert === 'OVERSOLD'
+          ? { text: 'RSI · 超卖', tone: 'good' as const }
+          : { text: 'RSI --', tone: 'neutral' as const };
 
   const toneClass = (tone: 'neutral' | 'warn' | 'danger' | 'good') =>
     tone === 'danger'
@@ -135,12 +91,10 @@ export function MonitorCard({ symbol, ticker, alert, snapshot, flash, onRemove }
               ? 'flash-up text-up-bright'
               : flash === 'down'
                 ? 'flash-down text-down-bright'
-                : 'text-text'
+                : 'text-white'
           }`}
         >
-          {ticker
-            ? ticker.last.toLocaleString(undefined, { maximumFractionDigits: 2 })
-            : '--'}
+          {ticker ? fmtPrice(ticker.last) : '--'}
         </span>
         <span className={changePositive ? 'text-up' : 'text-down'}>
           {changePositive ? '+' : ''}
@@ -149,12 +103,8 @@ export function MonitorCard({ symbol, ticker, alert, snapshot, flash, onRemove }
       </div>
 
       <div className="text-gray-400 text-xs flex gap-3">
-        <span>资金费率 {alert ? fmtPct(alert.fundingRate) : '--'}</span>
+        <span>资金费率 {fundingValue ? fmtPct(fundingValue.fundingRate) : '--'}</span>
         <span>多空比 {alert ? fmtRatio(alert.longShortRatio) : '--'}</span>
-      </div>
-
-      <div className={`text-xs ${toneClass(funding.tone)}`}>
-        资金费率含义: {funding.text}
       </div>
 
       <div className={toneClass(sentiment.tone)}>
