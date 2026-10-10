@@ -473,7 +473,6 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
   return {
     action,
     long: [
-      `进场区 ${fmtLevel(longZoneLo)}–${fmtLevel(longZoneHi)}`,
       `价格接近最近支撑（${levels.immediateSupport}）${longNearSupport ? '✓' : '✗'}`,
       `站上 ${levels.upperResistance} 突破确认`,
       `量价无背离，量比≥0.8${longVolOk ? ' ✓' : ' ✗'}${!longNoBearDivergence ? ' · 巨量出货⚠️' : ''}`,
@@ -482,7 +481,6 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
       longMacdOk ? 'MACD 柱线已转正 ✓' : '等 MACD 柱线转正 ✗',
     ],
     short: [
-      `进场区 ${fmtLevel(shortZoneLo)}–${fmtLevel(shortZoneHi)}`,
       `价格接近最近阻力（${levels.upperResistance}）${shortNearResistance ? '✓' : '✗'}`,
       `跌破 ${levels.immediateSupport} 确认转弱`,
       `放量确认，量比≥0.8${shortVolOk ? ' ✓' : ' ✗'}`,
@@ -911,11 +909,14 @@ export function Detail() {
                         <li key={idx}>{line}</li>
                       ))}
                     </ul>
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-3 text-xs text-gray-300">
-                      <div>目标1：{tp?.longPlan?.tp1}</div>
-                      <div>目标2：{tp?.longPlan?.tp2}</div>
-                      <div>止损：{tp?.longPlan?.sl}</div>
-                      <div>盈亏比：{tp?.longPlan?.rr}</div>
+                    <div className="mt-3 text-xs text-gray-300 space-y-1">
+                      <div>进场区：{tp?.longPlan?.entryLow}–{tp?.longPlan?.entryHigh}</div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                        <div>目标1：{tp?.longPlan?.tp1}</div>
+                        <div>目标2：{tp?.longPlan?.tp2}</div>
+                        <div>止损：{tp?.longPlan?.sl}</div>
+                        <div>盈亏比：{tp?.longPlan?.rr}</div>
+                      </div>
                     </div>
                   </div>
                   <div className="border border-down/40 rounded-lg p-3">
@@ -925,11 +926,14 @@ export function Detail() {
                         <li key={idx}>{line}</li>
                       ))}
                     </ul>
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-3 text-xs text-gray-300">
-                      <div>目标1：{tp?.shortPlan?.tp1}</div>
-                      <div>目标2：{tp?.shortPlan?.tp2}</div>
-                      <div>止损：{tp?.shortPlan?.sl}</div>
-                      <div>盈亏比：{tp?.shortPlan?.rr}</div>
+                    <div className="mt-3 text-xs text-gray-300 space-y-1">
+                      <div>进场区：{tp?.shortPlan?.entryLow}–{tp?.shortPlan?.entryHigh}</div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                        <div>目标1：{tp?.shortPlan?.tp1}</div>
+                        <div>目标2：{tp?.shortPlan?.tp2}</div>
+                        <div>止损：{tp?.shortPlan?.sl}</div>
+                        <div>盈亏比：{tp?.shortPlan?.rr}</div>
+                      </div>
                     </div>
                   </div>
                 </div>
