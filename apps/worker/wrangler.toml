@@ -3,8 +3,6 @@ main = "src/index.ts"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Cloudflare Account ID，可在 Dashboard 首页右侧获取
-# 或运行 `npx wrangler whoami` 查看
 account_id = "d95b04d0dcf147b40c75dd809e7cfd1d"
 
 [vars]
@@ -15,19 +13,12 @@ AI_DAILY_LIMIT = "500"
 # CORS 白名单：留空表示允许所有来源
 ALLOWED_ORIGINS = ""
 
-# KV 命名空间：先运行 `npx wrangler kv namespace create CRYPTO_CACHE` 创建
-# 将返回的 id 填入下方
 [[kv_namespaces]]
 binding = "CRYPTO_CACHE"
 id = "78f38a660d6b477dab99fd9299883398"
 
 [ai]
 binding = "AI"
-
-# 自定义域名路由，绕过 workers.dev 在部分网络的屏蔽
-routes = [
-  { pattern = "smartfield.dpdns.org/api/*", zone_id = "dbeb10ef1215d62e36229179323d6490" }
-]
 
 [triggers]
 crons = []
