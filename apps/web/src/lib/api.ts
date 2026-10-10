@@ -6,6 +6,11 @@ import type {
   AiStrategyDto,
   FundingRateDto,
   ContractStatsDto,
+  FomcSnapshot,
+  MacroCalendarData,
+  MacroFundingData,
+  LiquidationHeatmap,
+  LiquidityData,
 } from '@crypto-monitor/shared';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
@@ -59,4 +64,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  /* ===== 宏观看板 ===== */
+  getMacroFomc: () => request<FomcSnapshot>('/macro/fomc'),
+  getMacroCalendar: () => request<MacroCalendarData>('/macro/calendar'),
+  getMacroFunding: (symbol: string) => request<MacroFundingData>(`/macro/funding/${symbol}`),
+  getMacroLiquidation: (symbol: string) => request<LiquidationHeatmap>(`/macro/liquidation/${symbol}`),
+  getMacroLiquidity: () => request<LiquidityData>('/macro/liquidity'),
 };

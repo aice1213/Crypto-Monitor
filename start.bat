@@ -2,10 +2,16 @@
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-echo [1/3] Building shared package...
-call npm run build --workspace=shared
+echo [1/3] Building shared + indicators packages...
+call npm run build --workspace=packages/shared
 if errorlevel 1 (
   echo Failed to build shared.
+  pause
+  exit /b 1
+)
+call npm run build --workspace=packages/indicators
+if errorlevel 1 (
+  echo Failed to build indicators.
   pause
   exit /b 1
 )

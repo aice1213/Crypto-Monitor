@@ -1,6 +1,6 @@
 {
   "name": "crypto-monitor",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "加密货币实时监控与AI策略分析平台",
   "workspaces": [
@@ -8,21 +8,22 @@
     "apps/*"
   ],
   "scripts": {
-    "dev:web": "npm run dev --workspace=web",
-    "dev:worker": "npm run dev --workspace=worker",
-    "build": "npm run build --workspace=shared && npm run build --workspace=indicators && npm run build --workspace=worker && npm run build --workspace=web",
-    "test": "npm run test --workspace=indicators && npm run test --workspace=worker",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:worker": "npm run dev --workspace=apps/worker",
+    "build": "npm run build --workspace=packages/shared && npm run build --workspace=packages/indicators && npm run build --workspace=apps/worker && npm run build --workspace=apps/web",
+    "test": "npm run test --workspace=packages/shared && npm run test --workspace=packages/indicators && npm run test --workspace=apps/worker && npm run test --workspace=apps/web",
     "lint": "eslint . --ext .ts,.tsx",
-    "typecheck": "tsc -b"
+    "typecheck": "npm run typecheck --workspace=packages/shared && npm run typecheck --workspace=packages/indicators && npm run typecheck --workspace=apps/worker && npm run typecheck --workspace=apps/web"
   },
   "engines": {
     "node": ">=18"
   },
   "devDependencies": {
-    "typescript": "^5.5.4",
-    "eslint": "^8.57.0",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^7.18.0"
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "typescript": "^5.5.4"
   },
   "allowScripts": {
     "esbuild@0.21.5": true,

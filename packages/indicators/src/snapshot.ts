@@ -8,11 +8,56 @@ import { compositeScore, emaStructure, rsiZone } from './score.js';
 import { buildTradePlan } from './tradePlan.js';
 import { assessDataQuality } from './dataQuality.js';
 
+/**
+ * 各周期一根 K 线的秒数。
+ *
+ * 必须覆盖调用方实际会请求的全部周期：`Home` 页会用 `1h` 拉取多周期对比所需的 K 线，
+ * 若此处缺项会退化为 900 秒，导致 1h K 线每根都被判为"缺口"，
+ * `dataQuality` 恒为 `INSUFFICIENT`（实测确认）。
+ */
 const INTERVAL_SEC: Record<string, number> = {
   '1m': 60,
   '5m': 300,
   '15m': 900,
+  '30m': 1800,
+  '1h': 3600,
+  '4h': 14400,
+  '8h': 28800,
+  '1d': 86400,
 };
+
+/** 未登记周期时的兜底秒数（15m） */
+const DEFAULT_INTERVAL_SEC = 900;
+
+/** 取周期对应秒数；未登记时回退到 15m 并保持行为可预期 */
+export function intervalSeconds(interval: string): number {
+  return INTERVAL_SEC[interval] ?? DEFAULT_INTERVAL_SEC;
+}
+
+/** 判定 K 线是否已收盘时允许的时钟偏差（秒） */
+const CLOSE_SKEW_SEC = 5;
+
+/**
+ * 剔除尚未收盘的最后一根 K 线。
+ *
+ * Gate.io 返回的最后一根是**正在形成中**的 K 线（`time` 为开盘时间）。
+ * 例如 15m 周期在开盘 19 秒时，该根成交量只有均量的 1.5%，
+ * 若参与计算会让量比、OBV 流向、"地量/缩量"判断全部失真。
+ * 指标一律基于已收盘 K 线计算。
+ */
+export function dropUnclosedCandle(
+  candles: CandleDto[],
+  intervalSec: number,
+  nowSec = Math.floor(Date.now() / 1000),
+): CandleDto[] {
+  if (candles.length <= 1) return candles;
+  const last = candles[candles.length - 1];
+  if (!last || !Number.isFinite(last.time)) return candles;
+  if (last.time + intervalSec > nowSec + CLOSE_SKEW_SEC) {
+    return candles.slice(0, -1);
+  }
+  return candles;
+}
 
 /**
  * 计算完整指标快照（dev.md 4）
@@ -21,8 +66,10 @@ export function computeSnapshot(
   inputCandles: CandleDto[],
   interval = '15m',
 ): IndicatorSnapshotDto {
-  const intervalSec = INTERVAL_SEC[interval] ?? 900;
-  const { candles, dataQuality } = assessDataQuality(inputCandles, intervalSec);
+  const intervalSec = intervalSeconds(interval);
+  // 未收盘 K 线不参与任何指标计算
+  const closedCandles = dropUnclosedCandle(inputCandles, intervalSec);
+  const { candles, dataQuality } = assessDataQuality(closedCandles, intervalSec);
 
   const closes = candles.map((c) => c.close);
   const highs = candles.map((c) => c.high);
@@ -55,7 +102,8 @@ export function computeSnapshot(
     dif: 0,
     dea: 0,
     hist: 0,
-    signal: 'NONE' as const,
+    signal: 'NO_SIGNAL' as const,
+    signalAge: null,
   };
 
   const obvArr = obv(closes, volumes);

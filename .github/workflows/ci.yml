@@ -20,24 +20,25 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck
+      - name: Lint
+        run: npm run lint
+
+      # 显式构建依赖包：shared / indicators 的 `main` 指向 ./dist，
+      # 而 dist 被 .gitignore 忽略、仓库中不存在。此前 CI 依赖
+      # "Typecheck" 步骤（未加 --noEmit）的副作用产出 dist，顺序一改就会断。
+      - name: Build packages
         run: |
-          npx tsc -p packages/shared/tsconfig.json
-          npx tsc -p packages/indicators/tsconfig.json
-          npx tsc -p apps/worker/tsconfig.json
-          npx tsc -p apps/web/tsconfig.json
+          npm run build --workspace=packages/shared
+          npm run build --workspace=packages/indicators
 
-      - name: Test indicators
-        working-directory: packages/indicators
-        run: npx vitest run
+      - name: Typecheck
+        run: npm run typecheck
 
-      - name: Test worker
-        working-directory: apps/worker
-        run: npx vitest run
+      - name: Test
+        run: npm test
 
       - name: Build web
-        working-directory: apps/web
-        run: npx vite build
+        run: npm run build --workspace=apps/web
 
   deploy:
     needs: lint-test-build
@@ -56,8 +57,8 @@ jobs:
 
       - name: Build shared + indicators
         run: |
-          npx tsc -p packages/shared/tsconfig.json
-          npx tsc -p packages/indicators/tsconfig.json
+          npm run build --workspace=packages/shared
+          npm run build --workspace=packages/indicators
 
       - name: Deploy Worker
         working-directory: apps/worker

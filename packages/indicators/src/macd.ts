@@ -41,15 +41,17 @@ export function macd(
   }
 
   const atrArr = atr(highs, lows, closes, 14);
-  let lastSignal: MacdResult['signal'] = 'NONE';
-  let signalAge = 99;
+  let lastSignal: MacdResult['signal'] = 'NO_SIGNAL';
+  /** 距最近一次交叉的根数；99 表示尚无交叉 */
+  let barsSinceCross = 99;
 
   for (let i = 0; i < n; i++) {
     const d = dif[i];
     const e = dea[i];
     const hist = !Number.isNaN(d) && !Number.isNaN(e) ? (d - e) * 2 : NaN;
 
-    let sig: MacdResult['signal'] = 'NONE';
+    let sig: MacdResult['signal'] = 'NO_SIGNAL';
+    let age: number | null = null;
     if (
       i > 0 &&
       !Number.isNaN(d) &&
@@ -64,22 +66,31 @@ export function macd(
       if (golden) {
         sig = 'GOLDEN_CROSS';
         lastSignal = 'GOLDEN_CROSS';
-        signalAge = 0;
+        barsSinceCross = 0;
+        age = 0;
       } else if (death) {
         sig = 'DEATH_CROSS';
         lastSignal = 'DEATH_CROSS';
-        signalAge = 0;
-      } else if (signalAge < 3) {
+        barsSinceCross = 0;
+        age = 0;
+      } else if (barsSinceCross < 3) {
+        // 保留期内的"近期信号"：signal 值不变，但 age ≥ 1 表示它不是当根交叉
         sig = lastSignal;
-        signalAge++;
+        barsSinceCross++;
+        age = barsSinceCross;
       }
     }
 
+    // DEA 尚未就绪（EMA9 of DIF 的预热期）时令 dea = dif，
+    // 这样 hist 恒为 0，三个字段之间保持 hist = (dif − dea) × 2 的自洽关系。
+    // 原实现把未就绪的 dea 写成 0，会出现 dif=14 / dea=0 / hist=0 这类自相矛盾的三元组。
+    const deaOut = Number.isNaN(e) ? (Number.isNaN(d) ? 0 : d) : e;
     result.push({
       dif: Number.isNaN(d) ? 0 : d,
-      dea: Number.isNaN(e) ? 0 : e,
+      dea: deaOut,
       hist: Number.isNaN(hist) ? 0 : hist,
       signal: sig,
+      signalAge: age,
     });
   }
   return result;

@@ -1,5 +1,31 @@
 import type { TradePlan, TrendDirection } from '@crypto-monitor/shared';
-import { MIN_RR_RATIO } from '@crypto-monitor/shared';
+import { BASE_SL_PCT, MAX_SL_PCT, MIN_RR_RATIO } from '@crypto-monitor/shared';
+
+/**
+ * 止损计算（dev.md 4.3）
+ *
+ * 基础止损 = 进场区远端 ±1.5%；允许为"躲开次近关键位"而放宽，
+ * 但放宽后不得宽于 MAX_SL_PCT（3%）。若无上限，次近关键位越远止损越宽、
+ * 盈亏比越低，会把本来合格的计划判死。
+ *
+ * @param far  进场区远端（做多 = entryLow，做空 = entryHigh）
+ * @param next 次近关键位（做多 = support[1]，做空 = resistance[1]）
+ */
+export function stopLoss(far: number, next: number | undefined, side: 'LONG' | 'SHORT'): number {
+  const base = side === 'LONG' ? far * (1 - BASE_SL_PCT) : far * (1 + BASE_SL_PCT);
+  if (next == null || !Number.isFinite(next)) return base;
+
+  // 结构位：贴在该关键位外侧 0.1%，避免止损正好落在结构上被扫
+  const structural = side === 'LONG' ? next * (1 - 0.001) : next * (1 + 0.001);
+  // 最宽限制
+  const limit = side === 'LONG' ? far * (1 - MAX_SL_PCT) : far * (1 + MAX_SL_PCT);
+
+  // 仅当结构位比基础止损更宽、且仍在最宽限制之内时才采用
+  if (side === 'LONG') {
+    return structural < base && structural >= limit ? structural : base;
+  }
+  return structural > base && structural <= limit ? structural : base;
+}
 
 /**
  * 交易计划生成（dev.md 4.3）
@@ -29,9 +55,7 @@ export function buildTradePlan(params: {
     if (tp1 == null || tp1 <= entryMid) return null;
     const tp2 = tp1 * 1.01;
 
-    const slCandidate = entryLow * 0.985;
-    const secondSupport = support[1];
-    const sl = secondSupport != null ? Math.min(slCandidate, secondSupport * 0.999) : slCandidate;
+    const sl = stopLoss(entryLow, support[1], 'LONG');
 
     const rr = Math.abs(tp1 - entryMid) / Math.abs(entryMid - sl);
     if (rr < MIN_RR_RATIO) {
@@ -61,9 +85,7 @@ export function buildTradePlan(params: {
   if (tp1 == null || tp1 >= entryMid) return null;
   const tp2 = tp1 * 0.99;
 
-  const slCandidate = entryHigh * 1.015;
-  const secondResistance = resistance[1];
-  const sl = secondResistance != null ? Math.max(slCandidate, secondResistance * 1.001) : slCandidate;
+  const sl = stopLoss(entryHigh, resistance[1], 'SHORT');
 
   const rr = Math.abs(entryMid - tp1) / Math.abs(sl - entryMid);
   if (rr < MIN_RR_RATIO) {

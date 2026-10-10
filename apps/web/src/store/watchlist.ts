@@ -1,18 +1,20 @@
 import { create } from 'zustand';
 import { DEFAULT_SYMBOLS, LS_WATCHLIST_KEY, WATCHLIST_LIMIT } from '@crypto-monitor/shared';
-import type { TickerDto, AlertSnapshotDto, IndicatorSnapshotDto } from '@crypto-monitor/shared';
+import type { TickerDto, AlertSnapshotDto, IndicatorSnapshotDto, FundingRateDto } from '@crypto-monitor/shared';
 
 interface WatchlistState {
   symbols: string[];
   tickers: Record<string, TickerDto>;
   alerts: Record<string, AlertSnapshotDto>;
   snapshots: Record<string, IndicatorSnapshotDto>;
+  funding: Record<string, FundingRateDto>;
   priceFlash: Record<string, 'up' | 'down' | null>;
   addSymbol: (symbol: string) => boolean;
   removeSymbol: (symbol: string) => void;
   setTicker: (symbol: string, ticker: TickerDto) => void;
   setAlert: (symbol: string, alert: AlertSnapshotDto) => void;
   setSnapshot: (symbol: string, snapshot: IndicatorSnapshotDto) => void;
+  setFunding: (symbol: string, funding: FundingRateDto) => void;
 }
 
 function loadWatchlist(): string[] {
@@ -33,6 +35,7 @@ export const useWatchlistStore = create<WatchlistState>((set, get) => ({
   tickers: {},
   alerts: {},
   snapshots: {},
+  funding: {},
   priceFlash: {},
 
   addSymbol: (symbol: string) => {
@@ -85,4 +88,7 @@ export const useWatchlistStore = create<WatchlistState>((set, get) => ({
 
   setSnapshot: (symbol, snapshot) =>
     set((s) => ({ snapshots: { ...s.snapshots, [symbol]: snapshot } })),
+
+  setFunding: (symbol, funding) =>
+    set((s) => ({ funding: { ...s.funding, [symbol]: funding } })),
 }));

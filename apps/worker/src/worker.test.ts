@@ -52,6 +52,15 @@ describe('symbol normalization', () => {
   it('btc-usdt -> BTC_USDT', () => {
     expect(normalizeAndValidate('btc-usdt').symbol).toBe('BTC_USDT');
   });
+  it('比特币 -> BTC_USDT', () => {
+    expect(normalizeAndValidate('比特币').symbol).toBe('BTC_USDT');
+  });
+  it('以太坊 -> ETH_USDT', () => {
+    expect(normalizeAndValidate('以太坊').symbol).toBe('ETH_USDT');
+  });
+  it('ＢＴＣ -> BTC_USDT', () => {
+    expect(normalizeAndValidate('ＢＴＣ').symbol).toBe('BTC_USDT');
+  });
   it('无效符号返回 valid=false', () => {
     expect(normalizeAndValidate('!!!').valid).toBe(false);
   });

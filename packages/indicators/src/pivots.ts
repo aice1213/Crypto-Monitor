@@ -63,18 +63,19 @@ export function supportResistance(
   supports = supports.slice(0, 3);
   resistances = resistances.slice(0, 3);
 
-  const dynamicUp = currentPrice * 1.008;
-  const dynamicDown = currentPrice * 0.992;
-  if (resistances.length < 3 && dynamicUp > currentPrice) resistances.push(dynamicUp);
-  if (supports.length < 3 && dynamicDown < currentPrice) supports.push(dynamicDown);
-
-  if (resistances.length < 3) {
-    const emaUp = ema99Last > currentPrice ? ema99Last : ema99Last * 1.008;
-    if (emaUp > currentPrice && !resistances.includes(emaUp)) resistances.push(emaUp);
+  // 动态补充位（dev.md 4.2 步骤 3）：以 EMA99 ± 当前价 × 0.8% 作为不足时的补充。
+  //
+  // 注意：绝不使用 currentPrice × 1.008 / 0.992 这类纯由现价推导的价位——
+  // 它会随每一轮轮询跟着价格漂移，却以"支撑/阻力"的名义展示，误导性强。
+  // EMA99 是真实指标位，只有它才有资格作为补充位。
+  const offset = currentPrice * 0.008;
+  if (resistances.length < 3 && Number.isFinite(ema99Last) && ema99Last > 0) {
+    const emaUp = ema99Last + offset;
+    if (emaUp > currentPrice) resistances.push(emaUp);
   }
-  if (supports.length < 3) {
-    const emaDown = ema99Last < currentPrice ? ema99Last : ema99Last * 0.992;
-    if (emaDown < currentPrice && !supports.includes(emaDown)) supports.push(emaDown);
+  if (supports.length < 3 && Number.isFinite(ema99Last) && ema99Last > 0) {
+    const emaDown = ema99Last - offset;
+    if (emaDown < currentPrice) supports.push(emaDown);
   }
 
   resistances.sort((a, b) => a - b);

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   DEFAULT_SYMBOLS,
   normalizeAndValidate,
@@ -8,9 +9,11 @@ import { useWatchlistStore } from '../../store/watchlist';
 import { usePolling } from '../../hooks/usePolling';
 import { api } from '../../lib/api';
 import { buildAlert } from '../../lib/alert';
+import { dropUnclosedCandle } from '@crypto-monitor/indicators';
 import { MonitorCard } from '../../components/Card/MonitorCard';
 
 export function Home() {
+  const navigate = useNavigate();
   const symbols = useWatchlistStore((s) => s.symbols);
   const tickers = useWatchlistStore((s) => s.tickers);
   const alerts = useWatchlistStore((s) => s.alerts);
@@ -21,6 +24,8 @@ export function Home() {
   const setTicker = useWatchlistStore((s) => s.setTicker);
   const setAlert = useWatchlistStore((s) => s.setAlert);
   const setSnapshot = useWatchlistStore((s) => s.setSnapshot);
+
+  const fundingMap = useWatchlistStore((s) => s.funding);
 
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
@@ -51,10 +56,15 @@ export function Home() {
             api.getStats(symbol).catch(() => null),
           ]);
 
+          // 同步更新资金费率 store
+          if (funding) useWatchlistStore.getState().setFunding(symbol, funding);
+
           if (candles15m) {
             setSnapshot(symbol, candles15m.snapshot);
             const alert = buildAlert({
               snapshot15m: candles15m.snapshot,
+              // 量价背离必须基于已收盘 K 线，否则最后一根的零头成交量会让判定失真
+              candles15m: dropUnclosedCandle(candles15m.candles, 900),
               snapshot1h: candles1h?.snapshot,
               funding: funding ?? undefined,
               stats: stats ?? undefined,
@@ -68,8 +78,23 @@ export function Home() {
     );
   }, [symbols, setAlert, setSnapshot]);
 
+  const pollFunding = useCallback(async () => {
+    // 低频：只拉 funding（卡片/详情页同步值，失败不覆盖）
+    await Promise.all(
+      symbols.map(async (symbol) => {
+        try {
+          const funding = await api.getFunding(symbol).catch(() => null);
+          if (funding) useWatchlistStore.getState().setFunding(symbol, funding);
+        } catch {
+          // ignore
+        }
+      }),
+    );
+  }, [symbols]);
+
   usePolling(pollTickers, 3000); // ticker 3s
   usePolling(pollHeavy, 15000); // 指标 15s
+  usePolling(pollFunding, 60000); // 资金费率 1min
 
   const handleAdd = async () => {
     setError('');
@@ -103,18 +128,34 @@ export function Home() {
     <div className="min-h-screen bg-bg text-text p-4">
       <header className="max-w-7xl mx-auto mb-4">
         <h1 className="text-2xl font-bold text-white mb-1">
-          加密货币实时监控与 AI 策略分析
+          Crypto Signa Monitor
         </h1>
         <p className="text-gray-500 text-xs mb-4">
           数据来源：Gate.io USDT 永续合约 · 仅供学习参考，不构成投资建议
         </p>
+
+        {/* 页面切换标签 */}
+        <div className="flex gap-1 mb-4 border-b border-cardborder pb-2">
+          <button
+            onClick={() => navigate('/')}
+            className="px-4 py-1.5 text-sm rounded-t border-b-2 border-gold text-gold font-medium"
+          >
+            监控面板
+          </button>
+          <button
+            onClick={() => navigate('/macro')}
+            className="px-4 py-1.5 text-sm rounded-t border-b-2 border-transparent text-gray-400 hover:text-white hover:border-gray-500"
+          >
+            宏观背景
+          </button>
+        </div>
 
         <div className="flex flex-wrap gap-2 items-center mb-3">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-            placeholder="输入标的，如 BTC、ETHUSDT、BTC_USDT"
+            placeholder="输入标的，如 BTC、ETHUSDT、BTC_USDT、比特币"
             className="bg-card border border-cardborder rounded px-3 py-1.5 text-sm text-white placeholder-gray-500 outline-none focus:border-gold flex-1 min-w-[200px]"
           />
           <button
@@ -159,6 +200,7 @@ export function Home() {
                 ticker={tickers[symbol]}
                 alert={alerts[symbol]}
                 snapshot={snapshots[symbol]}
+                funding={fundingMap[symbol]}
                 flash={priceFlash[symbol]}
                 onRemove={removeSymbol}
               />

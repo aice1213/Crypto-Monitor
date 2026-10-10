@@ -21,7 +21,10 @@ export function assessDataQuality(
       processed.push({ ...candles[i] });
       continue;
     }
-    const prev = candles[i - 1];
+    // 与**已修正**的上一根比较，而不是原始上一根。
+    // 否则一根错误报价（如 100 → 130）会把紧随其后的恢复根（130 → 100）也判为 >15% 跳变，
+    // 于是一次异常连坐两根；用修正后的前收（100）比较则恢复根涨幅为 0，不再被误杀。
+    const prev = processed[i - 1]!;
     const curr = candles[i];
     const expectedTime = prev.time + intervalSec;
     const isGap = curr.time > expectedTime + intervalSec * 0.5;
