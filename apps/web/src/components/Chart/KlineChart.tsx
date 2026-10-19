@@ -18,6 +18,7 @@ import {
   buildEmaSeries,
   buildEntryBand,
   buildMacdPane,
+  buildPatternMarkers,
   buildPlanLevels,
   type EntryBand,
 } from './chartData';
@@ -209,6 +210,9 @@ export function KlineChart({ candles, snapshot }: Props) {
 
     // 进场区阴影：先更新数据再重绘
     bandRef.current = buildEntryBand(snapshot.plan);
+
+    // 形态标记：看涨在蜡烛下方朝上，看跌在蜡烛上方朝下
+    ref.candleSeries.setMarkers(buildPatternMarkers(snapshot.patterns, candles));
 
     // ---- 主图价位线：支撑 / 阻力 / 计划价位 ----
     ref.priceLines.forEach((line) => ref.candleSeries.removePriceLine(line));

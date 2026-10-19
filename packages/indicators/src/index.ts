@@ -8,3 +8,6 @@ export { compositeScore, emaStructure, rsiZone } from './score.js';
 export { buildTradePlan, stopLoss } from './tradePlan.js';
 export { assessDataQuality } from './dataQuality.js';
 export { computeSnapshot, detectVolumePriceDivergence, dropUnclosedCandle, intervalSeconds } from './snapshot.js';
+export { detectPatterns } from './patterns.js';
+export { classifyMarketState } from './marketState.js';
+export { classifyMaStrategy } from './maStrategy.js';

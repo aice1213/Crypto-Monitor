@@ -7,6 +7,9 @@ import { supportResistance, ema99LastValue } from './pivots.js';
 import { compositeScore, emaStructure, rsiZone } from './score.js';
 import { buildTradePlan } from './tradePlan.js';
 import { assessDataQuality } from './dataQuality.js';
+import { detectPatterns } from './patterns.js';
+import { classifyMarketState } from './marketState.js';
+import { classifyMaStrategy } from './maStrategy.js';
 
 /**
  * 各周期一根 K 线的秒数。
@@ -86,10 +89,14 @@ export function computeSnapshot(
 
   const ema7Arr = ema(closes, 7);
   const ema25Arr = ema(closes, 25);
+  const ema50Arr = ema(closes, 50);
   const ema99Arr = ema(closes, 99);
+  const ema200Arr = ema(closes, 200);
   const ema7 = last(ema7Arr);
   const ema25 = last(ema25Arr);
+  const ema50 = last(ema50Arr);
   const ema99 = last(ema99Arr);
+  const ema200 = last(ema200Arr);
 
   const emaStruct = n < 120 ? 'MIXED' : emaStructure(ema7, ema25, ema99);
 
@@ -123,6 +130,20 @@ export function computeSnapshot(
   const ema99Last = ema99LastValue(closes);
   const { support, resistance } = supportResistance(candles, ema99Last);
 
+  // 价格行为形态检测
+  const patternContext = {
+    trend: trend.direction,
+    support,
+    resistance,
+  };
+  const patterns = detectPatterns(candles, patternContext, { windowBars: 30 });
+
+  // 市场状态分类
+  const marketState = classifyMarketState(candles, ema7, ema25, ema99, emaStruct);
+
+  // 均线交易策略（EMA200趋势过滤 + EMA50价值区间回踩）
+  const maStrategy = classifyMaStrategy(candles, ema50Arr, ema200Arr);
+
   let plan = null;
   if (dataQuality !== 'INSUFFICIENT') {
     plan = buildTradePlan({
@@ -137,7 +158,9 @@ export function computeSnapshot(
   return {
     ema7,
     ema25,
+    ema50,
     ema99,
+    ema200,
     emaStructure: emaStruct,
     rsi14,
     rsiZone: rsiZ,
@@ -146,6 +169,9 @@ export function computeSnapshot(
     trend,
     support,
     resistance,
+    patterns,
+    marketState,
+    maStrategy,
     plan,
     dataQuality,
   };

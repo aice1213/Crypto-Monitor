@@ -13,7 +13,7 @@ import type {
   LiquidityData,
 } from '@crypto-monitor/shared';
 
-const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://smartfield.dpdns.org/api';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();

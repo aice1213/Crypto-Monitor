@@ -6,6 +6,7 @@ import type {
   AiStrategyDto,
   TickerDto,
   FundingRateDto,
+  PatternSignal,
 } from '@crypto-monitor/shared';
 import { AI_REGEN_COOLDOWN_MS, fmtPrice, formatBeijingTime } from '@crypto-monitor/shared';
 import { api } from '../../lib/api';
@@ -16,6 +17,84 @@ import { useWatchlistStore } from '../../store/watchlist';
 
 function toPercent(rate: number): number {
   return rate * 100;
+}
+
+/** 形态中文名映射 */
+const PAT_NAME: Record<string, string> = {
+  PINBAR: '针形K线',
+  INSIDE_BAR: '内包K线',
+  FAKEY: '假突破',
+};
+
+/**
+ * 价格行为形态解读：将形态信号综合为一条交易含义。
+ * 优先级：同方向多形态共振 > 单一高质量形态 > 方向分歧。
+ */
+function patternInterpretation(snapshot: IndicatorSnapshotDto): { title: string; meaning: string; breakoutLevel: number | null; strategy: string | null } {
+  const patterns: PatternSignal[] = snapshot.patterns ?? [];
+  if (patterns.length === 0) {
+    return { title: '无形态信号', meaning: '近期无显著价格行为形态，以 EMA/MACD/RSI 趋势判断为主', breakoutLevel: null, strategy: null };
+  }
+
+  const bull = patterns.filter(p => p.direction === 'BULLISH').length;
+  const bear = patterns.filter(p => p.direction === 'BEARISH').length;
+  const highQ = patterns.filter(p => p.quality === 'HIGH').length;
+  const best = patterns.reduce<PatternSignal | null>((m, p) =>
+    !m || p.score > m.score || (p.score === m.score && p.strength > m.strength) ? p : m,
+  null);
+
+  if (!best) return { title: '无有效形态', meaning: '形态检测返回空结果', breakoutLevel: null, strategy: null };
+
+  const bestName = PAT_NAME[best.type] ?? best.type;
+  const bestDir = best.direction === 'BULLISH' ? '看涨' : '看跌';
+  const bestScoreStr = `共振${best.score}/3`;
+  const stratLabel = best.strategy === 'BREAKOUT' ? '突破' : '反转';
+  const failedNote = best.failed ? '⚠️ 失效' : '';
+  const zoneNote = best.eventZoneId ? ` · ${best.eventZoneId}` : '';
+
+  // 同方向 ≥2 形态：多重确认
+  if ((bull >= 2 && best.direction === 'BULLISH') || (bear >= 2 && best.direction === 'BEARISH')) {
+    const dir = bull > bear ? '看涨' : '看跌';
+    return {
+      title: `${patterns.length}个形态共振${dir} · ${stratLabel}`,
+      meaning: `多形态确认${dir}信号${highQ > 0 ? '（含高质量信号）' : ''}，${best.strategy === 'BREAKOUT' ? '挂单突破进场' : '关键位确认后进场'}，${best.failed ? '注意：最新信号已失效' : '需防假突破'}`,
+      breakoutLevel: best.breakoutLevel,
+      strategy: stratLabel,
+    };
+  }
+
+  // 方向分歧：看涨 + 看跌并存
+  if (bull >= 1 && bear >= 1) {
+    return {
+      title: `形态方向分歧${failedNote}`,
+      meaning: `同时出现看涨和看跌形态${bull}↑${bear}↓，信号互相抵消，不宜单独依形态交易，等趋势方向明确`,
+      breakoutLevel: null,
+      strategy: null,
+    };
+  }
+
+  // 单一高质量形态
+  if (best.quality === 'HIGH') {
+    const entryHint = best.breakoutLevel
+      ? `挂单 ${fmtPrice(best.breakoutLevel)} 突破进场`
+      : best.strategy === 'REVERSAL'
+        ? (best.direction === 'BULLISH' ? '支撑位拒绝做多' : '阻力位拒绝做空')
+        : (best.direction === 'BULLISH' ? '看涨突破待确认' : '看跌突破待确认');
+    return {
+      title: `高共振${bestName} · ${bestDir} · ${stratLabel}${failedNote}`,
+      meaning: `${bestName}形成${bestDir}信号${bestScoreStr}${zoneNote}，${entryHint}`,
+      breakoutLevel: best.breakoutLevel,
+      strategy: stratLabel,
+    };
+  }
+
+  // 中等质量
+  return {
+    title: `${bestName} · ${bestDir} · ${stratLabel}${failedNote}`,
+    meaning: `${bestName}方向${bestDir}${bestScoreStr}，但共振不足${best.failed ? '，且信号已失效' : ''}，参考意义有限`,
+    breakoutLevel: best.breakoutLevel,
+    strategy: stratLabel,
+  };
 }
 
 function fundingInterpretation(rate: number): { label: string; detail: string; meaning: string } {
@@ -340,7 +419,22 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
   const rsi = rsiInterpretation(snapshot);
   const macd = macdInterpretation(snapshot);
   const vp = volumePriceInterpretation(snapshot);
+  const pat = patternInterpretation(snapshot);
   const obvText = snapshot.obv.flow === 'INFLOW' ? '流入' : snapshot.obv.flow === 'OUTFLOW' ? '流出' : '中性';
+  const patCount = snapshot.patterns?.length ?? 0;
+  const patBreakout = pat.breakoutLevel != null ? ` · 挂单 ${fmtPrice(pat.breakoutLevel)}` : '';
+  const patDetail = patCount > 0
+    ? `共${patCount}个信号 · ${pat.title}${patBreakout}`
+    : '无近期信号';
+
+  // ── 均线策略 ──
+  const ma = snapshot.maStrategy;
+  const maTrendLabel = ma?.trendFilter === 'LONG_ONLY' ? '↑ 只做多' : ma?.trendFilter === 'SHORT_ONLY' ? '↓ 只做空' : '⚪ 无趋势';
+  const maStatusIcon = ma?.signalStatus === 'READY' ? '🟢' : ma?.signalStatus === 'WAITING' ? '🟡' : ma?.signalStatus === 'AWAY' ? '⚪' : '🚫';
+  const maStatusLabel = ma?.signalStatus === 'READY' ? '可入场' : ma?.signalStatus === 'WAITING' ? '等待回踩' : ma?.signalStatus === 'AWAY' ? '远离价值区' : '趋势不符';
+  const maDetail = ma
+    ? `${maTrendLabel} · 回踩${ma.retestCount}次 · EMA50 ${ma.nearEma50 ? '✓' : '✗'} · ${maStatusLabel}`
+    : '数据不足';
 
   return [
     {
@@ -362,6 +456,16 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
       title: vp.title,
       detail: `量比 ${snapshot.obv.volumeRatio.toFixed(2)} · OBV${obvText} · ${snapshot.trend.direction}`,
       meaning: vp.meaning,
+    },
+    {
+      title: pat.title,
+      detail: patDetail,
+      meaning: pat.meaning,
+    },
+    {
+      title: `均线策略 ${maStatusIcon} ${maStatusLabel}`,
+      detail: maDetail,
+      meaning: ma?.interpretation ?? '数据不足',
     },
   ];
 }
@@ -855,7 +959,7 @@ export function Detail() {
 
             <div className="mb-4">
               <div className="text-gray-500 text-xs mb-2">核心依据</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
                 {decisionBasis(snapshot, ticker?.last).map((item, idx) => (
                   <div key={idx} className="rounded-lg border border-cardborder bg-black/10 p-3 text-sm">
                     <div className="text-white font-medium mb-1">{item.title}</div>

@@ -7,6 +7,42 @@ interface Cluster {
   count: number;
 }
 
+/** 局部极值点（`index` 为原始数组下标） */
+export interface PivotPoint {
+  index: number;
+  price: number;
+}
+
+/**
+ * 找局部极值（swing high / swing low）：左右各 `window` 根内严格最大 / 最小。
+ *
+ * 支撑阻力与价格行为分析（结构、区间、双顶双底）共用同一套判定，
+ * 避免两处各写一份、口径漂移。
+ */
+export function findPivots(
+  candles: CandleDto[],
+  window = 3,
+): { highs: PivotPoint[]; lows: PivotPoint[] } {
+  const highs: PivotPoint[] = [];
+  const lows: PivotPoint[] = [];
+  if (candles.length < window * 2 + 1) return { highs, lows };
+
+  for (let i = window; i < candles.length - window; i++) {
+    const cur = candles[i]!;
+    let isHigh = true;
+    let isLow = true;
+    for (let j = i - window; j <= i + window; j++) {
+      if (j === i) continue;
+      const other = candles[j]!;
+      if (other.high >= cur.high) isHigh = false;
+      if (other.low <= cur.low) isLow = false;
+    }
+    if (isHigh) highs.push({ index: i, price: cur.high });
+    if (isLow) lows.push({ index: i, price: cur.low });
+  }
+  return { highs, lows };
+}
+
 /**
  * 支撑/阻力位计算（dev.md 4.2）
  */
@@ -20,20 +56,15 @@ export function supportResistance(
   const currentPrice = slice[slice.length - 1].close;
   const window = 3;
 
-  const resistanceCands: { price: number; volume: number }[] = [];
-  const supportCands: { price: number; volume: number }[] = [];
-
-  for (let i = window; i < slice.length - window; i++) {
-    let isResistance = true;
-    let isSupport = true;
-    for (let j = i - window; j <= i + window; j++) {
-      if (j === i) continue;
-      if (slice[j].high >= slice[i].high) isResistance = false;
-      if (slice[j].low <= slice[i].low) isSupport = false;
-    }
-    if (isResistance) resistanceCands.push({ price: slice[i].high, volume: slice[i].volume });
-    if (isSupport) supportCands.push({ price: slice[i].low, volume: slice[i].volume });
-  }
+  const { highs, lows } = findPivots(slice, window);
+  const resistanceCands = highs.map((h) => ({
+    price: h.price,
+    volume: slice[h.index]!.volume,
+  }));
+  const supportCands = lows.map((l) => ({
+    price: l.price,
+    volume: slice[l.index]!.volume,
+  }));
 
   const cluster = (cands: { price: number; volume: number }[]): number[] => {
     if (cands.length === 0) return [];

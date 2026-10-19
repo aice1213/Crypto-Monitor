@@ -34,6 +34,69 @@ export type MacdSignal = 'GOLDEN_CROSS' | 'DEATH_CROSS' | 'NO_SIGNAL';
 export type ObvFlow = 'INFLOW' | 'OUTFLOW' | 'BALANCED';
 export type TrendDirection = 'BULLISH' | 'BEARISH' | 'RANGING';
 export type DataQuality = 'FULL' | 'GAPS_FILLED' | 'INSUFFICIENT';
+export type MarketState = 'TREND_UP' | 'TREND_DOWN' | 'WIDE_RANGE' | 'NARROW_RANGE';
+
+/* ===== 价格行为形态 ===== */
+
+export type PatternType = 'PINBAR' | 'INSIDE_BAR' | 'FAKEY';
+
+export type PatternDirection = 'BULLISH' | 'BEARISH';
+
+export type PatternQuality = 'HIGH' | 'MEDIUM' | 'LOW';
+
+/** 策略分类：反转（关键位拒绝）vs 突破（形态破位顺势） */
+export type PatternStrategy = 'REVERSAL' | 'BREAKOUT';
+
+export interface PatternSignal {
+  type: PatternType;
+  direction: PatternDirection;
+  /** 形态强度：0~1，影线/突破幅度相对 ATR 的比例 */
+  strength: number;
+  /** 共振质量：HIGH(3) / MEDIUM(2) / LOW(0-1)，基于趋势+关键位+强度 */
+  quality: PatternQuality;
+  /** 共振评分：0~3，趋势一致+1、关键位+1、强度+1 */
+  score: number;
+  /** 形态完成时所在 K 线的 0-based 下标 */
+  index: number;
+  /** K 线开盘时间（秒），供图表定位使用 */
+  time: number;
+  /** 事件区 ID：同一价格区域聚集的信号共享同一 ID（间距 < ATR） */
+  eventZoneId: string | null;
+  /** 形态是否失效：看涨后跌破低点 / 看跌后涨破高点 = 失败，信号方向反转 */
+  failed: boolean;
+  /** 策略分类：REVERSAL（关键位拒绝）/ BREAKOUT（形态破位） */
+  strategy: PatternStrategy;
+  /** 突破触发价位：挂止损单的价位，null = 不适用 */
+  breakoutLevel: number | null;
+}
+
+export interface PatternContext {
+  trend: TrendDirection;
+  support: number[];
+  resistance: number[];
+}
+
+export interface MarketStateDto {
+  state: MarketState;
+  /** 解读文案 */
+  interpretation: string;
+}
+
+/** 均线策略信号状态 */
+export type MaSignalStatus = 'READY' | 'WAITING' | 'AWAY' | 'INVALID';
+
+export interface MaStrategyDto {
+  /** 趋势过滤：价格与 EMA200 的关系 */
+  trendFilter: 'LONG_ONLY' | 'SHORT_ONLY' | 'NONE';
+  /** 回踩次数：最近 N 根内价格触及 EMA50 的次数 */
+  retestCount: number;
+  /** 是否处于 EMA50 价值区间 */
+  nearEma50: boolean;
+  /** 入场信号状态 */
+  signalStatus: MaSignalStatus;
+  /** 策略解读文案 */
+  interpretation: string;
+}
 
 export interface MacdResult {
   dif: number;
@@ -78,7 +141,9 @@ export interface TradePlan {
 export interface IndicatorSnapshotDto {
   ema7: number;
   ema25: number;
+  ema50: number;
   ema99: number;
+  ema200: number;
   emaStructure: EmaStructure;
   rsi14: number;
   rsiZone: RsiZone;
@@ -87,6 +152,12 @@ export interface IndicatorSnapshotDto {
   trend: TrendResult;
   support: number[];
   resistance: number[];
+  /** 最近出现的形态信号（按时间倒序，最新在前） */
+  patterns: PatternSignal[];
+  /** 市场状态分类（趋势/震荡/窄幅随机） */
+  marketState: MarketStateDto;
+  /** 均线交易策略（EMA200趋势 + EMA50价值区间回踩） */
+  maStrategy: MaStrategyDto;
   plan: TradePlan | null;
   dataQuality: DataQuality;
 }

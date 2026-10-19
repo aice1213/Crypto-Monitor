@@ -1,4 +1,5 @@
-import type { CandleDto, TradePlan } from '@crypto-monitor/shared';
+import type { CandleDto, TradePlan, PatternSignal } from '@crypto-monitor/shared';
+import type { SeriesMarker, Time } from 'lightweight-charts';
 import { ema, macd, obv, rsi, sma } from '@crypto-monitor/indicators';
 
 /**
@@ -129,6 +130,49 @@ export function buildEntryBand(plan: TradePlan | null): EntryBand | null {
     // 做多绿、做空红，半透明
     color: plan.side === 'LONG' ? 'rgba(38, 166, 154, 0.18)' : 'rgba(239, 83, 80, 0.18)',
   };
+}
+
+/** 形态标记颜色 */
+const PAT_MARKER = '#ab47bc';
+
+/** 形态名称短标签 */
+const PAT_LABEL: Record<string, string> = { PINBAR: 'P', INSIDE_BAR: 'IB', FAKEY: 'FK' };
+
+/**
+ * 将形态信号转换为 lightweight-charts 的 SeriesMarker 数组。
+ *
+ * - 看涨形态：箭头朝上，标记在蜡烛下方
+ * - 看跌形态：箭头朝下，标记在蜡烛上方
+ * - HIGH 质量：实心 + 形态标签 + 共振评分
+ * - 按时间升序输出（lightweight-charts 要求）
+ */
+export function buildPatternMarkers(
+  patterns: PatternSignal[],
+  candles: CandleDto[],
+): SeriesMarker<Time>[] {
+  if (patterns.length === 0 || candles.length === 0) return [];
+
+  return patterns
+    .filter(p => p.index >= 0 && p.index < candles.length)
+    .sort((a, b) => a.index - b.index)
+    .map(p => {
+      const candle = candles[p.index]!;
+      const isBull = p.direction === 'BULLISH';
+      const label = PAT_LABEL[p.type] ?? '?';
+      const showScore = p.quality === 'HIGH' ? ` (${p.score}/3)` : '';
+      const stratTag = p.strategy === 'BREAKOUT' ? '破' : '';
+      const failTag = p.failed ? '✕' : '';
+      const text = `${isBull ? '▲' : '▼'}${label}${stratTag}${failTag}${isBull ? '多' : '空'}${showScore}`;
+
+      return {
+        time: candle.time as Time,
+        position: isBull ? 'belowBar' : 'aboveBar',
+        color: p.failed ? '#ef5350' : PAT_MARKER,
+        shape: isBull ? 'arrowUp' : 'arrowDown',
+        id: `pat-${p.type}-${p.index}`,
+        text,
+      };
+    });
 }
 
 export interface PlanLevel {
