@@ -19,6 +19,7 @@ function snapshot(over: Partial<IndicatorSnapshotDto> = {}): IndicatorSnapshotDt
     resistance: [102, 105, 110],
     patterns: [],
     marketState: { state: 'NARROW_RANGE', interpretation: '区间收窄，等待方向选择' },
+    trendStructure: { direction: 'RANGING', lastHigh: null, lastLow: null, highPattern: 'EQUIV', lowPattern: 'EQUIV', highCount: 0, lowCount: 0, structureBreak: 'UNCLEAR', interpretation: '结构不明确' },
     maStrategy: { trendFilter: 'LONG_ONLY', retestCount: 1, nearEma50: false, signalStatus: 'WAITING', interpretation: '🟡 第1次回踩 EMA50，回踩次数不足2次，价值区未确认' },
     plan: null,
     dataQuality: 'FULL',

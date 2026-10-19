@@ -436,6 +436,17 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
     ? `${maTrendLabel} · 回踩${ma.retestCount}次 · EMA50 ${ma.nearEma50 ? '✓' : '✗'} · ${maStatusLabel}`
     : '数据不足';
 
+  // ── 趋势结构 ──
+  const ts = snapshot.trendStructure;
+  const tsDirIcon = ts?.direction === 'BULLISH' ? '✅' : ts?.direction === 'BEARISH' ? '🔻' : '⚪';
+  const tsDirLabel = ts?.direction === 'BULLISH' ? '上涨结构' : ts?.direction === 'BEARISH' ? '下跌结构' : '结构不明';
+  const tsBreakIcon = ts?.structureBreak === 'BULL_BROKEN' ? '⚠️破' : ts?.structureBreak === 'BEAR_BROKEN' ? '⚠️破' : ts?.structureBreak === 'INTACT' ? '✓' : '';
+  const tsPattern = ts ? `${ts.highPattern === 'HH' ? 'HH' : ts.highPattern === 'LH' ? 'LH' : '—'} / ${ts.lowPattern === 'HL' ? 'HL' : ts.lowPattern === 'LL' ? 'LL' : '—'}` : '—';
+  const tsCount = ts ? (ts.highCount > 0 ? `HH×${ts.highCount}` : '') + (ts.lowCount > 0 ? ` HL×${ts.lowCount}` : '') : '';
+  const tsDetail = ts
+    ? `${tsDirIcon} ${tsDirLabel} · ${tsPattern}${tsCount ? ' · ' + tsCount : ''} ${tsBreakIcon}`
+    : '数据不足';
+
   return [
     {
       title: ema.title,
@@ -466,6 +477,11 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
       title: `均线策略 ${maStatusIcon} ${maStatusLabel}`,
       detail: maDetail,
       meaning: ma?.interpretation ?? '数据不足',
+    },
+    {
+      title: `趋势结构 ${tsDirIcon} ${tsDirLabel}`,
+      detail: tsDetail,
+      meaning: ts?.interpretation ?? '数据不足',
     },
   ];
 }
@@ -959,7 +975,7 @@ export function Detail() {
 
             <div className="mb-4">
               <div className="text-gray-500 text-xs mb-2">核心依据</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                 {decisionBasis(snapshot, ticker?.last).map((item, idx) => (
                   <div key={idx} className="rounded-lg border border-cardborder bg-black/10 p-3 text-sm">
                     <div className="text-white font-medium mb-1">{item.title}</div>

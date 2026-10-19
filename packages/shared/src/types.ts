@@ -82,6 +82,33 @@ export interface MarketStateDto {
   interpretation: string;
 }
 
+/* ===== 趋势结构（HH/HL/LH/LL 波段分析） ===== */
+
+/** 趋势结构破坏信号 */
+export type TrendBreakSignal = 'INTACT' | 'BULL_BROKEN' | 'BEAR_BROKEN' | 'UNCLEAR';
+
+/** 趋势结构分析结果 */
+export interface TrendStructureDto {
+  /** 结构方向：基于最近波段高点/低点关系 */
+  direction: TrendDirection;
+  /** 最近波段高点价格 */
+  lastHigh: number | null;
+  /** 最近波段低点价格 */
+  lastLow: number | null;
+  /** 波段高点模式：HH（更高高点）/ LH（更低高点）/ EQUIV（持平） */
+  highPattern: 'HH' | 'LH' | 'EQUIV';
+  /** 波段低点模式：HL（更高低点）/ LL（更低低点）/ EQUIV（持平） */
+  lowPattern: 'HL' | 'LL' | 'EQUIV';
+  /** 连续 HH 计数（从最近一次 HH 开始计数） */
+  highCount: number;
+  /** 连续 HL 计数（从最近一次 HL 开始计数） */
+  lowCount: number;
+  /** 趋势结构是否破坏 */
+  structureBreak: TrendBreakSignal;
+  /** 结构解读文案 */
+  interpretation: string;
+}
+
 /** 均线策略信号状态 */
 export type MaSignalStatus = 'READY' | 'WAITING' | 'AWAY' | 'INVALID';
 
@@ -156,6 +183,8 @@ export interface IndicatorSnapshotDto {
   patterns: PatternSignal[];
   /** 市场状态分类（趋势/震荡/窄幅随机） */
   marketState: MarketStateDto;
+  /** 趋势结构分析（HH/HL/LH/LL 波段高低点结构） */
+  trendStructure: TrendStructureDto;
   /** 均线交易策略（EMA200趋势 + EMA50价值区间回踩） */
   maStrategy: MaStrategyDto;
   plan: TradePlan | null;

@@ -10,6 +10,7 @@ import { assessDataQuality } from './dataQuality.js';
 import { detectPatterns } from './patterns.js';
 import { classifyMarketState } from './marketState.js';
 import { classifyMaStrategy } from './maStrategy.js';
+import { analyzeTrendStructure } from './trendStructure.js';
 
 /**
  * 各周期一根 K 线的秒数。
@@ -144,6 +145,9 @@ export function computeSnapshot(
   // 均线交易策略（EMA200趋势过滤 + EMA50价值区间回踩）
   const maStrategy = classifyMaStrategy(candles, ema50Arr, ema200Arr);
 
+  // 趋势结构分析（HH/HL/LH/LL 波段高低点结构）
+  const trendStructure = analyzeTrendStructure(candles);
+
   let plan = null;
   if (dataQuality !== 'INSUFFICIENT') {
     plan = buildTradePlan({
@@ -171,6 +175,7 @@ export function computeSnapshot(
     resistance,
     patterns,
     marketState,
+    trendStructure,
     maStrategy,
     plan,
     dataQuality,
