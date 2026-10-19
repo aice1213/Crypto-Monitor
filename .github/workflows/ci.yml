@@ -75,9 +75,7 @@ jobs:
           VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
 
       - name: Publish to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          command: pages deploy apps/web/dist --project-name=crypto-monitor
+        run: npx wrangler pages deploy apps/web/dist --project-name=crypto-monitor
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
