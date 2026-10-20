@@ -14,7 +14,7 @@ import { atr } from './atr.js';
  */
 
 /** 形态原始信号（共振评分前） */
-type RawPattern = Omit<PatternSignal, 'quality' | 'score' | 'eventZoneId' | 'failed' | 'strategy' | 'breakoutLevel'> & {
+type RawPattern = Omit<PatternSignal, 'quality' | 'score' | 'eventZoneId' | 'failed' | 'strategy' | 'breakoutLevel' | 'retracementEntry'> & {
   /** 形态突破参考价位上界（Pinbar=自身 high，InsideBar=母K high，Fakey=母K high） */
   rangeHigh: number;
   /** 形态突破参考价位下界 */
@@ -286,19 +286,18 @@ function detectFakey(
 function classifyStrategy(
   candle: CandleDto,
   context: PatternContext,
-): { strategy: PatternStrategy; breakoutLevel: number | null } {
+): PatternStrategy {
   const price = candle.close;
   const nearSupport = context.support.some(s => Math.abs(price - s) / s <= 0.03);
   const nearResistance = context.resistance.some(r => Math.abs(price - r) / r <= 0.03);
 
   if (nearSupport || nearResistance) {
     // 关键位附近 → 反转策略（价格拒绝关键位后反向）
-    return { strategy: 'REVERSAL', breakoutLevel: null };
+    return 'REVERSAL';
   }
 
   // 非关键位 → 突破策略（形态破位后价格延续）
-  // 但需要计算突破触发价位
-  return { strategy: 'BREAKOUT', breakoutLevel: null };
+  return 'BREAKOUT';
 }
 
 /**
@@ -321,6 +320,20 @@ function calcBreakoutLevel(
   } else {
     return signal.rangeLow - buffer;
   }
+}
+
+/**
+ * 计算 50% 回调限价进场价（仅 REVERSAL 策略针形K线）：
+ * - 看涨：rangeLow + (rangeHigh - rangeLow) × 0.5
+ * - 看跌：rangeHigh - (rangeHigh - rangeLow) × 0.5
+ *
+ * 文档原文："进场价 = 针形K线低点 + (针形K线高点 - 针形K线低点) × 0.5"
+ * "如果价格直接离开，不追；如果重新回到50%位置，说明市场愿意给更优成本。"
+ */
+function calcRetracementEntry(signal: RawPattern): number | null {
+  const range = signal.rangeHigh - signal.rangeLow;
+  if (range <= 0) return null;
+  return signal.rangeLow + range * 0.5;
 }
 
 /* ─── 共振评分 ─── */
@@ -414,9 +427,11 @@ export function detectPatterns(
       const atrVal = atrArr[s.index] || 0;
       const { score, quality } = scoreResonance(s.direction, s.strength, candle, context);
       const failed = checkPatternOutcome(s, candles);
-      const { strategy } = classifyStrategy(candle, context);
+      const strategy = classifyStrategy(candle, context);
       const breakoutLevel = strategy === 'BREAKOUT' ? calcBreakoutLevel(s, atrVal) : null;
-      return { ...s, quality, score, failed, strategy, breakoutLevel, eventZoneId: null };
+      // 50% 回调限价进场价：仅 REVERSAL 策略的针形K线适用
+      const retracementEntry = strategy === 'REVERSAL' && s.type === 'PINBAR' ? calcRetracementEntry(s) : null;
+      return { ...s, quality, score, failed, strategy, breakoutLevel, retracementEntry, eventZoneId: null };
     })
     .sort((a, b) => b.index - a.index)
     .slice(0, maxSignals);

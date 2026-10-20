@@ -304,3 +304,77 @@ describe('策略分类（REVERSAL vs BREAKOUT）', () => {
     expect(pinbar!.breakoutLevel).toBeNull();
   });
 });
+
+/* ─── 50% 回调限价进场 ─── */
+
+describe('50% 回调限价进场（retracementEntry）', () => {
+  it('REVERSAL 策略的看涨 Pinbar → retracementEntry 有值', () => {
+    // 支撑位在 117 附近，Pinbar close=116.9 距离 < 3%
+    const sCtx: PatternContext = { trend: 'BULLISH', support: [117], resistance: [] };
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    candles.push(candle(i, 116.6, 116.8, 112, 116.9));
+    const signals = detectPatterns(candles, sCtx);
+    const pinbar = signals.find(s => s.type === 'PINBAR');
+    expect(pinbar).toBeDefined();
+    expect(pinbar!.strategy).toBe('REVERSAL');
+    // rangeLow=112, rangeHigh=116.8, retracementEntry = 112 + (116.8-112)*0.5 = 114.4
+    expect(pinbar!.retracementEntry).toBeCloseTo(114.4, 1);
+    expect(pinbar!.retracementEntry!).toBeGreaterThan(112);
+    expect(pinbar!.retracementEntry!).toBeLessThan(116.8);
+  });
+
+  it('REVERSAL 策略的看跌 Pinbar → retracementEntry 有值', () => {
+    // 阻力位在 117 附近
+    const rCtx: PatternContext = { trend: 'BEARISH', support: [], resistance: [117] };
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    candles.push(candle(i, 116.6, 121, 116.5, 116.9)); // BEARISH Pinbar at resistance
+    const signals = detectPatterns(candles, rCtx);
+    const pinbar = signals.find(s => s.type === 'PINBAR' && s.direction === 'BEARISH');
+    expect(pinbar).toBeDefined();
+    expect(pinbar!.strategy).toBe('REVERSAL');
+    // rangeLow=116.5, rangeHigh=121, retracementEntry = 116.5 + (121-116.5)*0.5 = 118.75
+    expect(pinbar!.retracementEntry).toBeCloseTo(118.75, 1);
+    expect(pinbar!.retracementEntry!).toBeGreaterThan(116.5);
+    expect(pinbar!.retracementEntry!).toBeLessThan(121);
+  });
+
+  it('BREAKOUT 策略的 Pinbar → retracementEntry 为 null', () => {
+    const noCtx: PatternContext = { trend: 'BULLISH', support: [], resistance: [] };
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    candles.push(candle(i, 116.6, 116.8, 112, 116.9)); // BULLISH Pinbar
+    const signals = detectPatterns(candles, noCtx);
+    const pinbar = signals.find(s => s.type === 'PINBAR');
+    expect(pinbar).toBeDefined();
+    expect(pinbar!.strategy).toBe('BREAKOUT');
+    expect(pinbar!.retracementEntry).toBeNull();
+  });
+
+  it('REVERSAL 策略的非 Pinbar 形态 → retracementEntry 为 null', () => {
+    const sCtx: PatternContext = { trend: 'BULLISH', support: [117], resistance: [] };
+    const candles = makeWarmup(15);
+    const i = candles.length;
+    candles.push(candle(i, 100, 120, 80, 115));   // 大母K线
+    candles.push(candle(i + 1, 110, 115, 90, 112)); // 内包K线（close=112，距支撑 117 较远）
+    const signals = detectPatterns(candles, sCtx);
+    const inside = signals.find(s => s.type === 'INSIDE_BAR');
+    expect(inside).toBeDefined();
+    // InsideBar 不是 Pinbar，即使 REVERSAL 策略也不计算 retracementEntry
+    expect(inside!.retracementEntry).toBeNull();
+  });
+
+  it('retracementEntry 值在 rangeLow 和 rangeHigh 之间', () => {
+    const sCtx: PatternContext = { trend: 'BULLISH', support: [117], resistance: [] };
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    candles.push(candle(i, 116.6, 116.8, 112, 116.9));
+    const signals = detectPatterns(candles, sCtx);
+    const pinbar = signals.find(s => s.type === 'PINBAR');
+    expect(pinbar).toBeDefined();
+    const r = pinbar!.retracementEntry!;
+    expect(r).toBeGreaterThan(112); // rangeLow
+    expect(r).toBeLessThan(116.8);  // rangeHigh
+  });
+});

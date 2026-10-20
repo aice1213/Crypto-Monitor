@@ -30,10 +30,10 @@ const PAT_NAME: Record<string, string> = {
  * 价格行为形态解读：将形态信号综合为一条交易含义。
  * 优先级：同方向多形态共振 > 单一高质量形态 > 方向分歧。
  */
-function patternInterpretation(snapshot: IndicatorSnapshotDto): { title: string; meaning: string; breakoutLevel: number | null; strategy: string | null } {
+function patternInterpretation(snapshot: IndicatorSnapshotDto): { title: string; meaning: string; breakoutLevel: number | null; strategy: string | null; retracementEntry: number | null } {
   const patterns: PatternSignal[] = snapshot.patterns ?? [];
   if (patterns.length === 0) {
-    return { title: '无形态信号', meaning: '近期无显著价格行为形态，以 EMA/MACD/RSI 趋势判断为主', breakoutLevel: null, strategy: null };
+    return { title: '无形态信号', meaning: '近期无显著价格行为形态，以 EMA/MACD/RSI 趋势判断为主', breakoutLevel: null, strategy: null, retracementEntry: null };
   }
 
   const bull = patterns.filter(p => p.direction === 'BULLISH').length;
@@ -43,7 +43,7 @@ function patternInterpretation(snapshot: IndicatorSnapshotDto): { title: string;
     !m || p.score > m.score || (p.score === m.score && p.strength > m.strength) ? p : m,
   null);
 
-  if (!best) return { title: '无有效形态', meaning: '形态检测返回空结果', breakoutLevel: null, strategy: null };
+  if (!best) return { title: '无有效形态', meaning: '形态检测返回空结果', breakoutLevel: null, strategy: null, retracementEntry: null };
 
   const bestName = PAT_NAME[best.type] ?? best.type;
   const bestDir = best.direction === 'BULLISH' ? '看涨' : '看跌';
@@ -60,6 +60,7 @@ function patternInterpretation(snapshot: IndicatorSnapshotDto): { title: string;
       meaning: `多形态确认${dir}信号${highQ > 0 ? '（含高质量信号）' : ''}，${best.strategy === 'BREAKOUT' ? '挂单突破进场' : '关键位确认后进场'}，${best.failed ? '注意：最新信号已失效' : '需防假突破'}`,
       breakoutLevel: best.breakoutLevel,
       strategy: stratLabel,
+      retracementEntry: best.retracementEntry,
     };
   }
 
@@ -70,6 +71,7 @@ function patternInterpretation(snapshot: IndicatorSnapshotDto): { title: string;
       meaning: `同时出现看涨和看跌形态${bull}↑${bear}↓，信号互相抵消，不宜单独依形态交易，等趋势方向明确`,
       breakoutLevel: null,
       strategy: null,
+      retracementEntry: null,
     };
   }
 
@@ -77,14 +79,17 @@ function patternInterpretation(snapshot: IndicatorSnapshotDto): { title: string;
   if (best.quality === 'HIGH') {
     const entryHint = best.breakoutLevel
       ? `挂单 ${fmtPrice(best.breakoutLevel)} 突破进场`
-      : best.strategy === 'REVERSAL'
-        ? (best.direction === 'BULLISH' ? '支撑位拒绝做多' : '阻力位拒绝做空')
-        : (best.direction === 'BULLISH' ? '看涨突破待确认' : '看跌突破待确认');
+      : best.retracementEntry != null
+        ? `限价 ${fmtPrice(best.retracementEntry)} 回调进场`
+        : best.strategy === 'REVERSAL'
+          ? (best.direction === 'BULLISH' ? '支撑位拒绝做多' : '阻力位拒绝做空')
+          : (best.direction === 'BULLISH' ? '看涨突破待确认' : '看跌突破待确认');
     return {
       title: `高共振${bestName} · ${bestDir} · ${stratLabel}${failedNote}`,
       meaning: `${bestName}形成${bestDir}信号${bestScoreStr}${zoneNote}，${entryHint}`,
       breakoutLevel: best.breakoutLevel,
       strategy: stratLabel,
+      retracementEntry: best.retracementEntry,
     };
   }
 
@@ -94,6 +99,7 @@ function patternInterpretation(snapshot: IndicatorSnapshotDto): { title: string;
     meaning: `${bestName}方向${bestDir}${bestScoreStr}，但共振不足${best.failed ? '，且信号已失效' : ''}，参考意义有限`,
     breakoutLevel: best.breakoutLevel,
     strategy: stratLabel,
+    retracementEntry: best.retracementEntry,
   };
 }
 
@@ -423,8 +429,9 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
   const obvText = snapshot.obv.flow === 'INFLOW' ? '流入' : snapshot.obv.flow === 'OUTFLOW' ? '流出' : '中性';
   const patCount = snapshot.patterns?.length ?? 0;
   const patBreakout = pat.breakoutLevel != null ? ` · 挂单 ${fmtPrice(pat.breakoutLevel)}` : '';
+  const patRetrace = pat.retracementEntry != null ? ` · 限价 ${fmtPrice(pat.retracementEntry)}` : '';
   const patDetail = patCount > 0
-    ? `共${patCount}个信号 · ${pat.title}${patBreakout}`
+    ? `共${patCount}个信号 · ${pat.title}${patBreakout}${patRetrace}`
     : '无近期信号';
 
   // ── 均线策略 ──

@@ -68,6 +68,8 @@ export interface PatternSignal {
   strategy: PatternStrategy;
   /** 突破触发价位：挂止损单的价位，null = 不适用 */
   breakoutLevel: number | null;
+  /** 50%回调限价进场价（仅 REVERSAL 策略针形K线），null = 不适用 */
+  retracementEntry: number | null;
 }
 
 export interface PatternContext {

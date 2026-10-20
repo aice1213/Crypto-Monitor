@@ -160,7 +160,7 @@ export function buildPatternMarkers(
       const isBull = p.direction === 'BULLISH';
       const label = PAT_LABEL[p.type] ?? '?';
       const showScore = p.quality === 'HIGH' ? ` (${p.score}/3)` : '';
-      const stratTag = p.strategy === 'BREAKOUT' ? '破' : '';
+      const stratTag = p.strategy === 'BREAKOUT' ? '破' : p.retracementEntry != null ? '回' : '';
       const failTag = p.failed ? '✕' : '';
       const text = `${isBull ? '▲' : '▼'}${label}${stratTag}${failTag}${isBull ? '多' : '空'}${showScore}`;
 
