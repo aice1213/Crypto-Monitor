@@ -21,6 +21,7 @@ function snapshot(over: Partial<IndicatorSnapshotDto> = {}): IndicatorSnapshotDt
     marketState: { state: 'NARROW_RANGE', interpretation: '区间收窄，等待方向选择' },
     trendStructure: { direction: 'RANGING', lastHigh: null, lastLow: null, highPattern: 'EQUIV', lowPattern: 'EQUIV', highCount: 0, lowCount: 0, structureBreak: 'UNCLEAR', interpretation: '结构不明确' },
     maStrategy: { trendFilter: 'LONG_ONLY', retestCount: 1, nearEma50: false, signalStatus: 'WAITING', interpretation: '🟡 第1次回踩 EMA50，回踩次数不足2次，价值区未确认' },
+    swingStrategy: { setup: 'NO_SETUP', direction: 'NEUTRAL', confidence: 0, stopLoss: null, takeProfit: null, reference: '', interpretation: '当前无明确波段设置', riskNote: '' },
     plan: null,
     dataQuality: 'FULL',
     ...over,

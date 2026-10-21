@@ -147,10 +147,12 @@ export function analyzeTrendStructure(candles: CandleDto[]): TrendStructureDto {
   const currentPrice = candles[n - 1].close;
   let structureBreak: TrendStructureDto['structureBreak'] = 'INTACT';
 
-  if (direction === 'BULLISH' && lastLow.price > 0 && highCount >= MIN_STRUCTURE_COUNT) {
+  // 看涨结构支撑来自连续 HL（higher lows），用 lowCount 确认结构稳固
+  if (direction === 'BULLISH' && lastLow.price > 0 && lowCount >= MIN_STRUCTURE_COUNT) {
     if (currentPrice < lastLow.price) {
       structureBreak = 'BULL_BROKEN';
     }
+    // 看跌结构阻力来自连续 LH（lower highs），用 highCount 确认结构稳固
   } else if (direction === 'BEARISH' && lastHigh.price > 0 && highCount >= MIN_STRUCTURE_COUNT) {
     if (currentPrice > lastHigh.price) {
       structureBreak = 'BEAR_BROKEN';

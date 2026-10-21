@@ -127,6 +127,35 @@ export interface MaStrategyDto {
   interpretation: string;
 }
 
+/** 波段交易设置类型 */
+export type SwingSetup =
+  | 'RANGE_LOW'              // 区间震荡：价格在支撑位附近，做多
+  | 'RANGE_HIGH'             // 区间震荡：价格在阻力位附近，做空
+  | 'TREND_PULLBACK_LONG'    // 顺势抓浪：上涨趋势回踩 EMA50，做多
+  | 'TREND_PULLBACK_SHORT'   // 顺势抓浪：下跌趋势反弹 EMA50，做空
+  | 'COUNTER_TREND_BEARISH'  // 逆势反转：上涨趋势假突破阻力，做空
+  | 'COUNTER_TREND_BULLISH'  // 逆势反转：下跌趋势假突破支撑，做多
+  | 'NO_SETUP';             // 无明确设置
+
+export interface SwingStrategyDto {
+  /** 当前波段设置类型 */
+  setup: SwingSetup;
+  /** 方向：做多 / 做空 / 无 */
+  direction: 'LONG' | 'SHORT' | 'NEUTRAL';
+  /** 设置强度评分：0~100 */
+  confidence: number;
+  /** 建议止损价位 */
+  stopLoss: number | null;
+  /** 建议止盈价位 */
+  takeProfit: number | null;
+  /** 参考价位说明 */
+  reference: string;
+  /** 策略解读文案 */
+  interpretation: string;
+  /** 风险提示 */
+  riskNote: string;
+}
+
 export interface MacdResult {
   dif: number;
   dea: number;
@@ -189,6 +218,8 @@ export interface IndicatorSnapshotDto {
   trendStructure: TrendStructureDto;
   /** 均线交易策略（EMA200趋势 + EMA50价值区间回踩） */
   maStrategy: MaStrategyDto;
+  /** 波段交易策略（区间震荡 / 顺势抓浪 / 逆势反转） */
+  swingStrategy: SwingStrategyDto;
   plan: TradePlan | null;
   dataQuality: DataQuality;
 }

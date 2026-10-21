@@ -454,6 +454,23 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
     ? `${tsDirIcon} ${tsDirLabel} · ${tsPattern}${tsCount ? ' · ' + tsCount : ''} ${tsBreakIcon}`
     : '数据不足';
 
+  // ── 波段策略 ──
+  const swing = snapshot.swingStrategy;
+  const swingIcon = swing?.direction === 'LONG' ? '🟢' : swing?.direction === 'SHORT' ? '🟡' : '⚪';
+  const swingLabel = swing?.setup === 'NO_SETUP' ? '观望'
+    : swing?.setup === 'RANGE_LOW' ? '区间多'
+    : swing?.setup === 'RANGE_HIGH' ? '区间空'
+    : swing?.setup === 'TREND_PULLBACK_LONG' ? '顺势多'
+    : swing?.setup === 'TREND_PULLBACK_SHORT' ? '顺势空'
+    : swing?.setup === 'COUNTER_TREND_BEARISH' ? '逆势空'
+    : swing?.setup === 'COUNTER_TREND_BULLISH' ? '逆势多'
+    : '—';
+  const swingConf = swing && swing.confidence > 0 ? ` · ${swing.confidence}%置信` : '';
+  const swingLevels = swing?.stopLoss != null ? ` · 止 ${fmtPrice(swing.stopLoss)} → ${fmtPrice(swing.takeProfit ?? 0)}` : '';
+  const swingDetail = swing
+    ? `${swingIcon} ${swingLabel}${swingConf}${swingLevels}`
+    : '数据不足';
+
   return [
     {
       title: ema.title,
@@ -489,6 +506,11 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
       title: `趋势结构 ${tsDirIcon} ${tsDirLabel}`,
       detail: tsDetail,
       meaning: ts?.interpretation ?? '数据不足',
+    },
+    {
+      title: `波段策略 ${swingLabel}`,
+      detail: swingDetail,
+      meaning: swing?.interpretation ?? '数据不足',
     },
   ];
 }

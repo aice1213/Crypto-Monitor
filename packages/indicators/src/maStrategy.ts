@@ -21,13 +21,16 @@ const MIN_RETEST_COUNT = 2;     // 最少回踩次数确认价值区
 const REJECTION_BARS = 3;       // 价格拒绝检测窗口（根数）
 
 /**
- * 计算价格触及 EMA50 的回踩次数。
+ * 计算价格在 EMA50 附近完成"来回"的次数。
  *
- * 回踩定义：最近 N 根内，价格从 EMA50 上方跌到 EMA50 附近（1.5%以内），
- * 然后又回到 EMA50 上方。每次这样的来回计一次回踩。
+ * 完整回踩 = 触及 EMA50 + 回到原位（被价值区承接）
+ *   - 上方回踩：价格从 EMA50 上方跌到 EMA50 附近 → 又回到上方（多头价值区承接）
+ *   - 下方反弹：价格从 EMA50 下方涨到 EMA50 附近 → 又回到下方（空头价值区承接）
  *
- * 文档原文："价格没有真正碰到50周期均线，但我依然算作第二次测试。
- *           我们看的是价值区间，不是一根死板的线。"
+ * 为什么要"来回"才计数？
+ *   文档原文："价格没有真正碰到50周期均线，但我依然算作第二次测试。
+ *             我们看的是价值区间，不是一根死板的线。"
+ *   价值区的意义在于"价格到这里会被接住"，只触不回说明没被承接，不算真正的回踩测试。
  */
 function countRetests(
   candles: CandleDto[],
@@ -39,7 +42,10 @@ function countRetests(
 
   const startIdx = Math.max(0, n - windowBars);
   let count = 0;
-  let wasAbove = false;
+  // 状态机：ABOVE=在EMA50上方远离  BELOW=在EMA50下方远离
+  //        NEAR_ABOVE=从上方进入接近EMA50  NEAR_BELOW=从下方进入接近EMA50
+  type State = 'ABOVE' | 'BELOW' | 'NEAR_ABOVE' | 'NEAR_BELOW';
+  let state: State = 'ABOVE';
 
   for (let i = startIdx; i < n; i++) {
     const close = candles[i]!.close;
@@ -49,11 +55,52 @@ function countRetests(
     const nearEma50 = Math.abs(close - ema50) / ema50 <= EMA50_PROXIMITY;
     const aboveEma50 = close > ema50;
 
-    if (wasAbove && nearEma50) {
-      count++;
-      wasAbove = false;
-    } else if (aboveEma50) {
-      wasAbove = true;
+    switch (state) {
+      case 'ABOVE': {
+        if (nearEma50) {
+          // 从上方首次进入 EMA50 附近 → 开始一次回踩测试
+          state = 'NEAR_ABOVE';
+        } else if (!aboveEma50) {
+          // 从上方直接跌到 EMA50 下方（跳空/长阴线）→ 切换到下方
+          state = 'BELOW';
+        }
+        break;
+      }
+      case 'BELOW': {
+        if (nearEma50) {
+          // 从下方首次进入 EMA50 附近 → 开始一次反弹测试
+          state = 'NEAR_BELOW';
+        } else if (aboveEma50) {
+          // 从下方直接跳到上方 → 切换
+          state = 'ABOVE';
+        }
+        break;
+      }
+      case 'NEAR_ABOVE': {
+        // 已在 EMA50 附近（来自上方）
+        if (aboveEma50 && !nearEma50) {
+          // 确认回到上方且远离 EMA50 → 完成一次回踩！
+          count++;
+          state = 'ABOVE';
+        } else if (!aboveEma50 && !nearEma50) {
+          // 跌破 EMA50 且远离 → 回踩失败（没被承接），切换到下方
+          state = 'BELOW';
+        }
+        // 仍然在 nearEma50 范围内 → 继续等待，不计数
+        break;
+      }
+      case 'NEAR_BELOW': {
+        // 已在 EMA50 附近（来自下方）
+        if (!aboveEma50 && !nearEma50) {
+          // 确认回到下方且远离 EMA50 → 完成一次反弹回踩！
+          count++;
+          state = 'BELOW';
+        } else if (aboveEma50 && !nearEma50) {
+          // 涨破 EMA50 且远离 → 反弹失败，切换到上方
+          state = 'ABOVE';
+        }
+        break;
+      }
     }
   }
 

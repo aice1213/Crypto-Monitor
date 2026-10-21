@@ -11,6 +11,7 @@ import { detectPatterns } from './patterns.js';
 import { classifyMarketState } from './marketState.js';
 import { classifyMaStrategy } from './maStrategy.js';
 import { analyzeTrendStructure } from './trendStructure.js';
+import { classifySwingStrategy } from './swingStrategy.js';
 
 /**
  * 各周期一根 K 线的秒数。
@@ -148,6 +149,9 @@ export function computeSnapshot(
   // 趋势结构分析（HH/HL/LH/LL 波段高低点结构）
   const trendStructure = analyzeTrendStructure(candles);
 
+  // 波段交易策略（区间震荡 / 顺势抓浪 / 逆势反转）
+  const swingStrategy = classifySwingStrategy(candles, ema50Arr, support, resistance, patterns);
+
   let plan = null;
   if (dataQuality !== 'INSUFFICIENT') {
     plan = buildTradePlan({
@@ -177,6 +181,7 @@ export function computeSnapshot(
     marketState,
     trendStructure,
     maStrategy,
+    swingStrategy,
     plan,
     dataQuality,
   };

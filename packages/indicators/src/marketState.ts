@@ -93,9 +93,10 @@ export function classifyMarketState(
     };
   }
 
-  // 边界情况：区间宽度适中
+  // 边界情况：区间宽度在 1.5×~3×ATR 之间
+  // 这是正常可交易的波动范围，不是极端的宽幅/窄幅
   return {
     state: 'WIDE_RANGE',
-    interpretation: `均线纠缠（发散 ${(emaSpread * 100).toFixed(1)}%），区间震荡（${(rangePct * 100).toFixed(1)}%），等待突破或回踩信号`,
+    interpretation: `均线纠缠（发散 ${(emaSpread * 100).toFixed(1)}%），区间震荡（${(rangePct * 100).toFixed(1)}% ≈ ${(rangeWidth / currentAtr).toFixed(1)}×ATR），正常波动，等待突破或回踩信号`,
   };
 }

@@ -11,3 +11,5 @@ export { computeSnapshot, detectVolumePriceDivergence, dropUnclosedCandle, inter
 export { detectPatterns } from './patterns.js';
 export { classifyMarketState } from './marketState.js';
 export { classifyMaStrategy } from './maStrategy.js';
+export { analyzeTrendStructure } from './trendStructure.js';
+export { classifySwingStrategy } from './swingStrategy.js';
