@@ -38,7 +38,7 @@ export type MarketState = 'TREND_UP' | 'TREND_DOWN' | 'WIDE_RANGE' | 'NARROW_RAN
 
 /* ===== 价格行为形态 ===== */
 
-export type PatternType = 'PINBAR' | 'INSIDE_BAR' | 'FAKEY';
+export type PatternType = 'PINBAR' | 'INSIDE_BAR' | 'FAKEY' | 'ENGULFING' | 'FAKE_BREAKOUT';
 
 export type PatternDirection = 'BULLISH' | 'BEARISH';
 
@@ -76,6 +76,10 @@ export interface PatternContext {
   trend: TrendDirection;
   support: number[];
   resistance: number[];
+  /** EMA50 当前值 — 用于检测关键位回踩（文档规则2-条件1） */
+  ema50?: number;
+  /** Fibonacci 回撤关键位数组 — 0.382/0.5/0.618 等（文档规则2-条件3） */
+  fibLevels?: number[];
 }
 
 export interface MarketStateDto {
@@ -172,6 +176,68 @@ export interface MacdResult {
   signalAge: number | null;
 }
 
+/** 柱体动能强度分级 */
+export type MacdMomentumLevel = 'STRONG' | 'MEDIUM' | 'WEAK' | 'EMPTY';
+
+/** 快线与柱体分离方向 */
+export type MacdSeparation = 'NONE' | 'BULLISH_SEP' | 'BEARISH_SEP';
+
+/** 柱体动能 + 快线分离综合信号 */
+export type MacdAdvancedSignal = 'SHORT' | 'LONG' | 'NONE';
+
+/**
+ * MACD 高阶分析：柱体动能强度 + 收缩 + 快线-柱体分离
+ *
+ * 核心理念（源自《MACD高阶实战心法》）：
+ * - MACD 本质是统计均线距离的动能指标，金叉死叉仅仅代表动能衰减，不代表趋势反转
+ * - 实战核心信号：大柱体 + 柱体收缩 + 快线与柱体形成分离
+ * - 零轴上方红柱缩量 + DIF 下行 = 做空信号
+ * - 零轴下方绿柱缩量 + DIF 上行 = 做多信号
+ */
+export interface MacdAdvancedDto {
+  /** 柱体动能强度（基于 |hist| / ATR14 归一化） */
+  momentum: MacdMomentumLevel;
+  /** 柱体是否在收缩（绝对值连续 N 根递减） */
+  contracting: boolean;
+  /** 柱体变化率：(hist[current] - hist[current-3]) / ATR14，正值=扩张，负值=收缩 */
+  histChangeRate: number;
+  /** 快线（DIF）方向 */
+  difDirection: 'UP' | 'DOWN' | 'FLAT';
+  /** 快线与柱体的分离类型 */
+  separation: MacdSeparation;
+  /** 零轴位置 */
+  zeroAxisPos: 'ABOVE' | 'BELOW' | 'NEAR';
+  /** 综合交易信号（柱体收缩 + 分离共振时产生） */
+  actionableSignal: MacdAdvancedSignal;
+  /** 一句话解读 */
+  interpretation: string;
+}
+
+/** RSI 背离类型 */
+export type RsiDivergenceType = 'BULLISH' | 'BEARISH';
+
+/** RSI 背离信号 */
+export interface RsiDivergenceSignal {
+  /** 背离方向：看涨（底背离）/ 看跌（顶背离） */
+  type: RsiDivergenceType;
+  /** 第一个低点/高点所在的 K 线下标 */
+  firstIndex: number;
+  /** 第一个低点/高点价格 */
+  firstPrice: number;
+  /** 第一个低点/高点对应的 RSI 值 */
+  firstRsi: number;
+  /** 第二个低点/高点所在的 K 线下标 */
+  secondIndex: number;
+  /** 第二个低点/高点价格 */
+  secondPrice: number;
+  /** 第二个低点/高点对应的 RSI 值 */
+  secondRsi: number;
+  /** RSI 变动幅度（百分点） */
+  rsiDelta: number;
+  /** 背离解读文案 */
+  interpretation: string;
+}
+
 export interface ObvResult {
   value: number;
   ma20: number;
@@ -196,6 +262,69 @@ export interface TradePlan {
   reason: string;
 }
 
+/**
+ * 反转入场信号（K线反转精准入场文档）：
+ * 三大信号共振 → 精准捕捉趋势反转
+ *
+ * 核心逻辑（文档第六节）：
+ *   1. 趋势走势转弱 — 最后趋势K线实体缩小，动能不足
+ *   2. 回调走势变强 — 回调中出现大蜡烛，反向动能介入
+ *   3. 趋势架构破坏 — 上升出LL / 下跌出HH，原架构被打破
+ *
+ * 关键位确认（加分项）：价格在支撑/阻力位附近时确定性翻倍
+ */
+export interface ReversalEntryDto {
+  /** 反转方向：BULLISH（上升趋势破坏→做多入场）/ BEARISH（下跌趋势破坏→做空入场） */
+  direction: 'BULLISH' | 'BEARISH';
+  /** 原趋势方向 */
+  originalTrend: 'UP' | 'DOWN';
+  /** 信号1：趋势走势转弱（true = 最后趋势K线实体小于前序均值） */
+  trendWeakening: boolean;
+  /** 信号2：回调走势变强（true = 回调中出现实体 > 1.5×ATR 的大蜡烛） */
+  strongPullback: boolean;
+  /** 信号3：趋势架构破坏（true = 上升出LL / 下跌出HH） */
+  structureBroken: boolean;
+  /** 关键位确认：价格在支撑/阻力位附近（±3%） */
+  nearKeyLevel: boolean;
+  /** 满足的共振条件数（0~4） */
+  resonanceCount: number;
+  /** 信号强度：0~1，基于满足条件数和幅度综合计算 */
+  strength: number;
+  /** 综合信号评级 */
+  verdict: 'STRONG_REVERSAL' | 'REVERSAL_WATCH' | 'NO_REVERSAL';
+  /** 建议入场价 */
+  entryPrice: number | null;
+  /** 建议止损价 */
+  stopLoss: number | null;
+  /** 建议止盈价 */
+  takeProfit: number | null;
+  /** 一句话解读 */
+  interpretation: string;
+}
+
+/** 回调健康度评级 */
+export type PullbackRating = 'STRONG' | 'HEALTHY' | 'NORMAL' | 'DEEP' | 'BROKEN' | 'UNKNOWN';
+
+/** 趋势健康度分析 */
+export interface PullbackHealthDto {
+  /** 当前趋势状态 */
+  state: 'INSUFFICIENT_DATA' | 'NO_SWING' | 'RANGING' | 'UP' | 'DOWN' | 'FLAT';
+  /** 回调健康度评级 */
+  rating: PullbackRating;
+  /** 回调深度（0~1） */
+  pullbackPct: number;
+  /** 回调 K 线根数 */
+  pullbackBars: number;
+  /** 量比：回调段均量 / 趋势段均量 */
+  volumeRatio: number;
+  /** ATR 归一化斜率 */
+  atrSlope: number;
+  /** 趋势方向 */
+  trendDir: 'UP' | 'DOWN' | 'NONE';
+  /** 一句话解读 */
+  interpretation: string;
+}
+
 export interface IndicatorSnapshotDto {
   ema7: number;
   ema25: number;
@@ -205,6 +334,8 @@ export interface IndicatorSnapshotDto {
   emaStructure: EmaStructure;
   rsi14: number;
   rsiZone: RsiZone;
+  /** RSI 背离信号（顶背离/底背离），null = 无背离 */
+  rsiDivergence: RsiDivergenceSignal | null;
   macd: MacdResult;
   obv: ObvResult;
   trend: TrendResult;
@@ -220,6 +351,12 @@ export interface IndicatorSnapshotDto {
   maStrategy: MaStrategyDto;
   /** 波段交易策略（区间震荡 / 顺势抓浪 / 逆势反转） */
   swingStrategy: SwingStrategyDto;
+  /** 趋势健康度与回调分析（Fibonacci 分级 + 量价配合 + ATR 斜率） */
+  pullbackHealth: PullbackHealthDto;
+  /** MACD 高阶分析（柱体动能强度 + 收缩 + 快线-柱体分离） */
+  macdAdvanced: MacdAdvancedDto;
+  /** 反转入场信号（三大信号共振：趋势转弱 + 回调变强 + 架构破坏 + 关键位） */
+  reversalEntry: ReversalEntryDto;
   plan: TradePlan | null;
   dataQuality: DataQuality;
 }

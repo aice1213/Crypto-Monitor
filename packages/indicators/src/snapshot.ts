@@ -3,7 +3,7 @@ import { ema } from './ema.js';
 import { rsi } from './rsi.js';
 import { macd } from './macd.js';
 import { obv } from './obv.js';
-import { supportResistance, ema99LastValue } from './pivots.js';
+import { supportResistance, ema99LastValue, fibonacciLevels } from './pivots.js';
 import { compositeScore, emaStructure, rsiZone } from './score.js';
 import { buildTradePlan } from './tradePlan.js';
 import { assessDataQuality } from './dataQuality.js';
@@ -12,6 +12,11 @@ import { classifyMarketState } from './marketState.js';
 import { classifyMaStrategy } from './maStrategy.js';
 import { analyzeTrendStructure } from './trendStructure.js';
 import { classifySwingStrategy } from './swingStrategy.js';
+import { detectRsiDivergence } from './rsiDivergence.js';
+import { analyzePullbackHealth } from './pullbackHealth.js';
+import { analyzeMacdAdvanced } from './macdAdvanced.js';
+import { analyzeReversalEntry } from './reversalEntry.js';
+import { atr } from './atr.js';
 
 /**
  * 各周期一根 K 线的秒数。
@@ -114,6 +119,7 @@ export function computeSnapshot(
     signal: 'NO_SIGNAL' as const,
     signalAge: null,
   };
+  const atrArr = atr(highs, lows, closes, 14);
 
   const obvArr = obv(closes, volumes);
   const obvResult = obvArr[obvArr.length - 1] ?? {
@@ -131,12 +137,15 @@ export function computeSnapshot(
 
   const ema99Last = ema99LastValue(closes);
   const { support, resistance } = supportResistance(candles, ema99Last);
+  const fibLevels = fibonacciLevels(candles);
 
   // 价格行为形态检测
   const patternContext = {
     trend: trend.direction,
     support,
     resistance,
+    ema50,
+    fibLevels,
   };
   const patterns = detectPatterns(candles, patternContext, { windowBars: 30 });
 
@@ -146,11 +155,23 @@ export function computeSnapshot(
   // 均线交易策略（EMA200趋势过滤 + EMA50价值区间回踩）
   const maStrategy = classifyMaStrategy(candles, ema50Arr, ema200Arr);
 
+  // RSI 背离检测
+  const rsiDivergence = detectRsiDivergence(candles, rsiArr);
+
   // 趋势结构分析（HH/HL/LH/LL 波段高低点结构）
   const trendStructure = analyzeTrendStructure(candles);
 
   // 波段交易策略（区间震荡 / 顺势抓浪 / 逆势反转）
   const swingStrategy = classifySwingStrategy(candles, ema50Arr, support, resistance, patterns);
+
+  // 趋势健康度与回调分析（Fibonacci 分级 + 量价配合 + ATR斜率）
+  const pullbackHealth = analyzePullbackHealth(candles);
+
+  // MACD 高阶分析（柱体动能强度 + 收缩 + 快线-柱体分离）
+  const macdAdvanced = analyzeMacdAdvanced(macdArr, atrArr);
+
+  // 反转入场信号（三大信号共振：趋势转弱 + 回调变强 + 架构破坏 + 关键位）
+  const reversalEntry = analyzeReversalEntry(candles, atrArr, trendStructure, support, resistance);
 
   let plan = null;
   if (dataQuality !== 'INSUFFICIENT') {
@@ -172,6 +193,7 @@ export function computeSnapshot(
     emaStructure: emaStruct,
     rsi14,
     rsiZone: rsiZ,
+    rsiDivergence,
     macd: macdResult,
     obv: obvResult,
     trend,
@@ -182,6 +204,9 @@ export function computeSnapshot(
     trendStructure,
     maStrategy,
     swingStrategy,
+    pullbackHealth,
+    macdAdvanced,
+    reversalEntry,
     plan,
     dataQuality,
   };

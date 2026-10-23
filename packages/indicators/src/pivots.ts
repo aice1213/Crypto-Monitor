@@ -140,3 +140,48 @@ export function ema99LastValue(closes: number[]): number {
   const last = e[e.length - 1];
   return Number.isNaN(last) ? closes[closes.length - 1] : last;
 }
+
+/**
+ * Fibonacci 回撤关键位计算
+ *
+ * 从最近 swing high/low 区间计算 0.382 / 0.5 / 0.618 回撤位。
+ * 看涨趋势（低点→高点）：回撤位 = high - (high-low) × ratio
+ * 看跌趋势（高点→低点）：反弹位 = low + (high-low) × ratio
+ *
+ * 文档规则2-条件3：形态出现在 Fibonacci 黄金分割位上是高质量关键价位。
+ *
+ * @param candles 最近 K 线
+ * @param lookback 回溯根数（默认 50）
+ * @returns Fibonacci 关键位数组，或空数组
+ */
+export function fibonacciLevels(
+  candles: CandleDto[],
+  lookback = 50,
+): number[] {
+  if (candles.length < 10) return [];
+  const slice = candles.slice(-Math.min(lookback, candles.length));
+  const { highs, lows } = findPivots(slice, 3);
+  if (highs.length === 0 || lows.length === 0) return [];
+
+  // 取最近的高点和低点
+  const latestHigh = highs[highs.length - 1]!;
+  const latestLow = lows[lows.length - 1]!;
+
+  // 判断趋势方向：高点在低点之后 → 看涨
+  const isBullish = latestHigh.index > latestLow.index;
+  const range = Math.abs(latestHigh.price - latestLow.price);
+  if (range === 0) return [];
+
+  const ratios = [0.382, 0.5, 0.618];
+  const levels: number[] = [];
+
+  for (const r of ratios) {
+    if (isBullish) {
+      levels.push(latestHigh.price - range * r);
+    } else {
+      levels.push(latestLow.price + range * r);
+    }
+  }
+
+  return levels.filter(p => p > 0 && Number.isFinite(p));
+}

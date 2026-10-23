@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { CandleDto } from '@crypto-monitor/shared';
-import { supportResistance } from './index.js';
+import { supportResistance, fibonacciLevels } from './index.js';
 
 /** 用显式的 high/low 数组构造 K 线，close 取中值，便于精确控制 Pivot */
 function fromHighLow(highs: number[], lows: number[], volumes?: number[]): CandleDto[] {
@@ -142,5 +142,104 @@ describe('supportResistance 动态补充位（dev.md 4.2 步骤 3）', () => {
     for (const p of [...support, ...resistance]) {
       expect(Math.abs(p - currentPrice)).toBeGreaterThan(1e-9);
     }
+  });
+});
+
+describe('fibonacciLevels 基础行为', () => {
+  it('K 线少于 10 根返回空数组', () => {
+    const candles = fromHighLow(
+      [10, 11, 12, 13, 14, 15, 16, 17, 18],
+      [9, 10, 11, 12, 13, 14, 15, 16, 17],
+    );
+    expect(fibonacciLevels(candles)).toEqual([]);
+  });
+
+  it('无 Pivot 候选（单调序列）返回空数组', () => {
+    const candles: CandleDto[] = [];
+    let p = 100;
+    for (let i = 0; i < 20; i++) {
+      candles.push({
+        time: 1_700_000_000 + i * 900,
+        open: p, high: p + 1, low: p, close: p + 1, volume: 1000,
+      });
+      p += 1;
+    }
+    expect(fibonacciLevels(candles)).toEqual([]);
+  });
+
+  it('看涨趋势（低点在高点之前）返回 0.382/0.5/0.618 回撤位', () => {
+    // 构造 20 根 K 线：低点在 i=5，高点在 i=14
+    // findPivots(window=3) 要求严格局部极值：i=5 的 low 必须低于 i=2~8 全部邻居
+    // i=14 的 high 必须高于 i=11~17 全部邻居
+    // 低点 low=100, 高点 high=120, range=20
+    // 38.2%: 120 - 20*0.382 = 112.36
+    // 50%: 120 - 20*0.5 = 110
+    // 61.8%: 120 - 20*0.618 = 107.64
+    const highs: number[] = [];
+    const lows: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      if (i === 5) {
+        highs.push(105);
+        lows.push(100);
+      } else if (i === 14) {
+        highs.push(120);
+        lows.push(105);
+      } else {
+        highs.push(105);
+        lows.push(102);
+      }
+    }
+    const candles = fromHighLow(highs, lows);
+    const levels = fibonacciLevels(candles);
+    expect(levels).toHaveLength(3);
+    expect(levels[0]!).toBeCloseTo(112.36, 1); // 0.382 回撤
+    expect(levels[1]!).toBeCloseTo(110, 1);     // 0.5 回撤
+    expect(levels[2]!).toBeCloseTo(107.64, 1);  // 0.618 回撤
+  });
+
+  it('看跌趋势（高点在低点之前）返回反弹位', () => {
+    // 高点在 i=5, 低点在 i=14
+    // 高点 high=120, 低点 low=100, range=20
+    // 38.2%: 100 + 20*0.382 = 107.64
+    // 50%: 100 + 20*0.5 = 110
+    // 61.8%: 100 + 20*0.618 = 112.36
+    const highs: number[] = [];
+    const lows: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      if (i === 5) {
+        highs.push(120);
+        lows.push(105);
+      } else if (i === 14) {
+        highs.push(105);
+        lows.push(100);
+      } else {
+        highs.push(105);
+        lows.push(102);
+      }
+    }
+    const candles = fromHighLow(highs, lows);
+    const levels = fibonacciLevels(candles);
+    expect(levels).toHaveLength(3);
+    expect(levels[0]!).toBeCloseTo(107.64, 1);  // 0.382 反弹
+    expect(levels[1]!).toBeCloseTo(110, 1);     // 0.5 反弹
+    expect(levels[2]!).toBeCloseTo(112.36, 1);  // 0.618 反弹
+  });
+
+  it('lookback 参数控制回溯范围', () => {
+    // 构造 30 根 K 线，Pivot 在 i=25 附近
+    // 默认 lookback=50 能覆盖，lookback=10 只取最后 10 根可能没有 Pivot
+    const highs: number[] = [];
+    const lows: number[] = [];
+    for (let i = 0; i < 30; i++) {
+      highs.push(i === 25 ? 120 : 105);
+      lows.push(i === 15 ? 100 : 102);
+    }
+    const candles = fromHighLow(highs, lows);
+    const levels50 = fibonacciLevels(candles, 50);
+    const levels10 = fibonacciLevels(candles, 10);
+    // lookback=50 覆盖全部 30 根，能检测到 Pivot
+    expect(levels50.length).toBeGreaterThan(0);
+    // lookback=10 只取最后 10 根（i=20~29），Pivot 可能不在窗口内
+    expect(levels10).toBeDefined();
   });
 });

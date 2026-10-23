@@ -89,10 +89,10 @@ type ChartRef = {
   priceLines: IPriceLine[];
 };
 
-/** 主图约占顶部 60%，下方 MACD 副图约占底部 30%，保留间距。 */
+/** 主图约占顶部 73%，下方 MACD 副图约占底部 21%（MACD 原 32% 割让 1/3 给主图），保留间距。 */
 const PANE_MARGINS = {
-  main: { top: 0.02, bottom: 0.36 },
-  macd: { top: 0.66, bottom: 0.02 },
+  main: { top: 0.02, bottom: 0.25 },
+  macd: { top: 0.77, bottom: 0.02 },
 } as const;
 
 const CHART_HEIGHT = 460;

@@ -229,36 +229,6 @@ function emaInterpretation(snapshot: IndicatorSnapshotDto, current?: number): { 
   return { title: 'EMA 纠缠', meaning: '均线缠绕，方向未明，突破需放量确认，否则频繁金叉死叉都是假信号' };
 }
 
-/** RSI 动态解读：位置风险 + 动能确认 */
-function rsiInterpretation(snapshot: IndicatorSnapshotDto): { title: string; meaning: string } {
-  const { rsi14, rsiZone, macd } = snapshot;
-  const macdBullish = macd.hist > 0;
-
-  if (rsiZone === 'OVERBOUGHT') {
-    if (!macdBullish || macd.signal === 'DEATH_CROSS') {
-      return { title: `RSI ${rsi14.toFixed(1)} 超买 · 动能背离`, meaning: '超买+动能衰减，最危险的追多信号，减多或观望' };
-    }
-    return { title: `RSI ${rsi14.toFixed(1)} 超买`, meaning: '超买但MACD红柱仍在扩张，强趋势可容忍，需盯柱线是否收缩' };
-  }
-
-  if (rsiZone === 'OVERSOLD') {
-    if (macdBullish || macd.signal === 'GOLDEN_CROSS') {
-      return { title: `RSI ${rsi14.toFixed(1)} 超卖 · 卖压衰竭`, meaning: '超卖+动能修复，反弹概率上升，但不单独抄底，等确认' };
-    }
-    return { title: `RSI ${rsi14.toFixed(1)} 超卖`, meaning: '超卖但空动能仍在，下跌趋势未止，不单独抄底' };
-  }
-
-  if (rsi14 >= 50) {
-    return { title: `RSI ${rsi14.toFixed(1)} 中性偏强`, meaning: '多头占优，趋势健康区，回踩不破50可顺势' };
-  }
-
-  if (rsi14 > 45) {
-    return { title: `RSI ${rsi14.toFixed(1)} 多空平衡`, meaning: '方向未定，上穿50偏多，下穿50偏空，不交易' };
-  }
-
-  return { title: `RSI ${rsi14.toFixed(1)} 中性偏弱`, meaning: '空头占优，反弹至50附近是阻力，偏空' };
-}
-
 /** MACD 动态解读：动能节奏 + 零轴位置 + 信号新鲜度 */
 function macdInterpretation(snapshot: IndicatorSnapshotDto): { title: string; meaning: string } {
   const { dif, dea, hist, signal, signalAge } = snapshot.macd;
@@ -422,7 +392,6 @@ function volumePriceInterpretation(snapshot: IndicatorSnapshotDto): { title: str
 
 function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<{ title: string; detail: string; meaning: string }> {
   const ema = emaInterpretation(snapshot, current);
-  const rsi = rsiInterpretation(snapshot);
   const macd = macdInterpretation(snapshot);
   const vp = volumePriceInterpretation(snapshot);
   const pat = patternInterpretation(snapshot);
@@ -434,15 +403,6 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
     ? `共${patCount}个信号 · ${pat.title}${patBreakout}${patRetrace}`
     : '无近期信号';
 
-  // ── 均线策略 ──
-  const ma = snapshot.maStrategy;
-  const maTrendLabel = ma?.trendFilter === 'LONG_ONLY' ? '↑ 只做多' : ma?.trendFilter === 'SHORT_ONLY' ? '↓ 只做空' : '⚪ 无趋势';
-  const maStatusIcon = ma?.signalStatus === 'READY' ? '🟢' : ma?.signalStatus === 'WAITING' ? '🟡' : ma?.signalStatus === 'AWAY' ? '⚪' : '🚫';
-  const maStatusLabel = ma?.signalStatus === 'READY' ? '可入场' : ma?.signalStatus === 'WAITING' ? '等待回踩' : ma?.signalStatus === 'AWAY' ? '远离价值区' : '趋势不符';
-  const maDetail = ma
-    ? `${maTrendLabel} · 回踩${ma.retestCount}次 · EMA50 ${ma.nearEma50 ? '✓' : '✗'} · ${maStatusLabel}`
-    : '数据不足';
-
   // ── 趋势结构 ──
   const ts = snapshot.trendStructure;
   const tsDirIcon = ts?.direction === 'BULLISH' ? '✅' : ts?.direction === 'BEARISH' ? '🔻' : '⚪';
@@ -452,6 +412,85 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
   const tsCount = ts ? (ts.highCount > 0 ? `HH×${ts.highCount}` : '') + (ts.lowCount > 0 ? ` HL×${ts.lowCount}` : '') : '';
   const tsDetail = ts
     ? `${tsDirIcon} ${tsDirLabel} · ${tsPattern}${tsCount ? ' · ' + tsCount : ''} ${tsBreakIcon}`
+    : '数据不足';
+
+  // ── 趋势健康度 ──
+  const ph = snapshot.pullbackHealth;
+  const phIcon = ph?.rating === 'STRONG' ? '🟢' : ph?.rating === 'HEALTHY' ? '🟢' : ph?.rating === 'NORMAL' ? '🟡' : ph?.rating === 'DEEP' ? '🟠' : ph?.rating === 'BROKEN' ? '🔴' : '⚪';
+  const phDirLabel = ph?.trendDir === 'UP' ? '↑' : ph?.trendDir === 'DOWN' ? '↓' : '⚪';
+  const phPct = ph ? `${(ph.pullbackPct * 100).toFixed(0)}%` : '—';
+  const phVol = ph && ph.volumeRatio > 0 ? ` · 量比${ph.volumeRatio.toFixed(2)}` : '';
+  const phSlope = ph && ph.atrSlope !== 0 ? ` · 斜率${ph.atrSlope > 0 ? '+' : ''}${ph.atrSlope.toFixed(2)}` : '';
+  const phDetail = ph ? `${phDirLabel} ${ph.state} · ${phPct}${phVol}${phSlope}` : '数据不足';
+
+  // ── 反转入场信号 ──
+  const rev = snapshot.reversalEntry;
+  const revIcon = rev?.verdict === 'STRONG_REVERSAL' ? '🔴' : rev?.verdict === 'REVERSAL_WATCH' ? '🟡' : '🟢';
+  const revLabel = rev?.verdict === 'STRONG_REVERSAL' ? '强反转' : rev?.verdict === 'REVERSAL_WATCH' ? '观察' : '健康';
+  const revDir = rev?.direction === 'BEARISH' ? '↓空' : rev?.direction === 'BULLISH' ? '↑多' : '—';
+  const revSignals: string[] = [];
+  if (rev?.trendWeakening) revSignals.push('转弱');
+  if (rev?.strongPullback) revSignals.push('回调强');
+  if (rev?.structureBroken) revSignals.push('结构破');
+  if (rev?.nearKeyLevel) revSignals.push('关键位');
+  const revSigStr = revSignals.length > 0 ? revSignals.join('·') : '—';
+  const revEntry = rev?.entryPrice != null && rev.verdict !== 'NO_REVERSAL' ? ` · 入场${fmtPrice(rev.entryPrice)}` : '';
+  const revDetail = rev ? `共振${rev.resonanceCount}/4 · ${revDir} · ${revSigStr}${revEntry}` : '数据不足';
+
+  return [
+    {
+      title: ema.title,
+      detail: `EMA7 ${snapshot.ema7.toFixed(2)} / EMA25 ${snapshot.ema25.toFixed(2)} / EMA99 ${snapshot.ema99.toFixed(2)}`,
+      meaning: ema.meaning,
+    },
+    {
+      title: macd.title,
+      detail: `DIF ${snapshot.macd.dif.toFixed(4)} / DEA ${snapshot.macd.dea.toFixed(4)}`,
+      meaning: macd.meaning,
+    },
+    {
+      title: vp.title,
+      detail: `量比 ${snapshot.obv.volumeRatio.toFixed(2)} · OBV${obvText} · ${snapshot.trend.direction}`,
+      meaning: vp.meaning,
+    },
+    {
+      title: pat.title,
+      detail: patDetail,
+      meaning: pat.meaning,
+    },
+    {
+      title: `趋势结构 ${tsDirIcon} ${tsDirLabel}`,
+      detail: tsDetail,
+      meaning: ts?.interpretation ?? '数据不足',
+    },
+    {
+      title: `趋势健康 ${phIcon}`,
+      detail: phDetail,
+      meaning: ph?.interpretation ?? '数据不足',
+    },
+    {
+      title: `反转入场 ${revIcon} ${revLabel}`,
+      detail: revDetail,
+      meaning: rev?.interpretation ?? '数据不足',
+    },
+  ];
+}
+
+/**
+ * 中长期参考依据 — 均线策略 + 波段策略。
+ *
+ * 这两个策略的参数隐含多日/波段语义（均线策略 EMA200 趋势过滤、波段策略 ATR 止盈幅度），
+ * 在 15m 盯盘节奏里不构成即时决策信号，与 EMA/RSI/MACD 等短线指标并列展示会误导判断。
+ * 因此从"核心依据"决策面板中分离，放在独立的"中长期参考"区块，明确标注仅供中长期视角。
+ */
+function longTermBasis(snapshot: IndicatorSnapshotDto): Array<{ title: string; detail: string; meaning: string }> {
+  // ── 均线策略 ──
+  const ma = snapshot.maStrategy;
+  const maTrendLabel = ma?.trendFilter === 'LONG_ONLY' ? '↑ 只做多' : ma?.trendFilter === 'SHORT_ONLY' ? '↓ 只做空' : '⚪ 无趋势';
+  const maStatusIcon = ma?.signalStatus === 'READY' ? '🟢' : ma?.signalStatus === 'WAITING' ? '🟡' : ma?.signalStatus === 'AWAY' ? '⚪' : '🚫';
+  const maStatusLabel = ma?.signalStatus === 'READY' ? '可入场' : ma?.signalStatus === 'WAITING' ? '等待回踩' : ma?.signalStatus === 'AWAY' ? '远离价值区' : '趋势不符';
+  const maDetail = ma
+    ? `${maTrendLabel} · 回踩${ma.retestCount}次 · EMA50 ${ma.nearEma50 ? '✓' : '✗'} · ${maStatusLabel}`
     : '数据不足';
 
   // ── 波段策略 ──
@@ -473,39 +512,9 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
 
   return [
     {
-      title: ema.title,
-      detail: `EMA7 ${snapshot.ema7.toFixed(2)} / EMA25 ${snapshot.ema25.toFixed(2)} / EMA99 ${snapshot.ema99.toFixed(2)}`,
-      meaning: ema.meaning,
-    },
-    {
-      title: rsi.title,
-      detail: `RSI ${snapshot.rsi14.toFixed(1)} · ${snapshot.rsiZone}`,
-      meaning: rsi.meaning,
-    },
-    {
-      title: macd.title,
-      detail: `DIF ${snapshot.macd.dif.toFixed(4)} / DEA ${snapshot.macd.dea.toFixed(4)}`,
-      meaning: macd.meaning,
-    },
-    {
-      title: vp.title,
-      detail: `量比 ${snapshot.obv.volumeRatio.toFixed(2)} · OBV${obvText} · ${snapshot.trend.direction}`,
-      meaning: vp.meaning,
-    },
-    {
-      title: pat.title,
-      detail: patDetail,
-      meaning: pat.meaning,
-    },
-    {
       title: `均线策略 ${maStatusIcon} ${maStatusLabel}`,
       detail: maDetail,
       meaning: ma?.interpretation ?? '数据不足',
-    },
-    {
-      title: `趋势结构 ${tsDirIcon} ${tsDirLabel}`,
-      detail: tsDetail,
-      meaning: ts?.interpretation ?? '数据不足',
     },
     {
       title: `波段策略 ${swingLabel}`,
@@ -599,7 +608,13 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
   const longZoneHi = levels.immediateSupportValue ?? price;
   const longZoneLo = longZoneHi - zone;
   const longEntry = (longZoneHi + longZoneLo) / 2;
-  const longSL = levels.keySupportValue ?? longZoneLo - zone * 0.5;
+  // 止损必须位于进场区下方：取次近支撑与基础止损中更低者。
+  // 否则当 support[0] 与 support[1] 间距小于 zone/2 时，SL 会反高于进场价，
+  // 导致分母 (entry - sl) 为负 → 盈亏比负数，且止损设在进场上方做多必亏。
+  const longSL = Math.min(
+    levels.keySupportValue ?? Number.MAX_SAFE_INTEGER,
+    longZoneLo - zone * 0.5,
+  );
   const longTP1 = levels.immediateSupportValue && levels.upperResistanceValue
     ? (levels.immediateSupportValue + levels.upperResistanceValue) / 2
     : longEntry + atrPct * 2;
@@ -1004,7 +1019,7 @@ export function Detail() {
 
             <div className="mb-4">
               <div className="text-gray-500 text-xs mb-2">核心依据</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {decisionBasis(snapshot, ticker?.last).map((item, idx) => (
                   <div key={idx} className="rounded-lg border border-cardborder bg-black/10 p-3 text-sm">
                     <div className="text-white font-medium mb-1">{item.title}</div>
@@ -1042,6 +1057,22 @@ export function Detail() {
                     </>
                   )}
                 </div>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="text-gray-500 text-xs">中长期参考</div>
+                <div className="text-gray-600 text-xs">基于 {interval} EMA50/200，仅供中长期视角</div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {longTermBasis(snapshot).map((item, idx) => (
+                  <div key={idx} className="rounded-lg border border-cardborder bg-black/10 p-3 text-sm">
+                    <div className="text-white font-medium mb-1">{item.title}</div>
+                    <div className="text-gray-400 text-xs mb-1">{item.detail}</div>
+                    <div className="text-gray-300 text-xs">{item.meaning}</div>
+                  </div>
+                ))}
               </div>
             </div>
 

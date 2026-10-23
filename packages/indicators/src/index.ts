@@ -3,7 +3,7 @@ export { rsi } from './rsi.js';
 export { macd } from './macd.js';
 export { atr } from './atr.js';
 export { obv } from './obv.js';
-export { supportResistance, ema99LastValue } from './pivots.js';
+export { supportResistance, ema99LastValue, fibonacciLevels } from './pivots.js';
 export { compositeScore, emaStructure, rsiZone } from './score.js';
 export { buildTradePlan, stopLoss } from './tradePlan.js';
 export { assessDataQuality } from './dataQuality.js';

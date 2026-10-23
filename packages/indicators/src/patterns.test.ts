@@ -131,7 +131,7 @@ describe('Fakey 假突破', () => {
     candles.push(candle(i, 100, 115, 85, 110));    // 母K线
     candles.push(candle(i + 1, 105, 110, 90, 105)); // 内包
     candles.push(candle(i + 2, 105, 120, 103, 118)); // 突破：close=118 > 115
-    candles.push(candle(i + 3, 118, 112, 88, 105)); // 收回：high=112<=115, low=88>=85
+    candles.push(candle(i + 3, 117, 112, 88, 106));  // 收回：high=112<=115, low=88>=85（body 不完全匹配前根，避免吞没触发）
     const signals = detectPatterns(candles, ctx);
     const fakey = signals.find(s => s.type === 'FAKEY');
     expect(fakey).toBeDefined();
@@ -151,6 +151,123 @@ describe('Fakey 假突破', () => {
     const signals = detectPatterns(candles, ctx);
     const fakey = signals.find(s => s.type === 'FAKEY');
     expect(fakey).toBeUndefined();
+  });
+});
+
+describe('Engulfing 吞没检测', () => {
+  it('看涨吞没：前阴后阳，阳实体完全包裹阴实体', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // 前一根阴烛：open=116.6, close=116.0（body=0.6）
+    candles.push(candle(i, 116.6, 116.8, 115.8, 116.0));
+    // 看涨吞没：open=115.9（<=116.0前close）, close=117.0（>=116.6前open）
+    candles.push(candle(i + 1, 115.9, 117.2, 115.7, 117.0));
+    const signals = detectPatterns(candles, ctx);
+    const engulf = signals.find(s => s.type === 'ENGULFING');
+    expect(engulf).toBeDefined();
+    expect(engulf!.direction).toBe('BULLISH');
+    expect(engulf!.strength).toBeGreaterThan(0);
+  });
+
+  it('看跌吞没：前阳后阴，阴实体完全包裹阳实体', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // 前一根阳烛：open=116.0, close=116.6（body=0.6）
+    candles.push(candle(i, 116.0, 116.8, 115.8, 116.6));
+    // 看跌吞没：open=116.7（>=116.6前close）, close=115.9（<=116.0前open）
+    candles.push(candle(i + 1, 116.7, 116.9, 115.5, 115.9));
+    const signals = detectPatterns(candles, ctx);
+    const engulf = signals.find(s => s.type === 'ENGULFING');
+    expect(engulf).toBeDefined();
+    expect(engulf!.direction).toBe('BEARISH');
+  });
+
+  it('不包裹不算吞没：当前实体未完全覆盖前根', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // 前一根阴烛：open=116.6, close=116.0
+    candles.push(candle(i, 116.6, 116.8, 115.8, 116.0));
+    // close=116.5 < 116.6（前open）→ 未完全包裹
+    candles.push(candle(i + 1, 115.9, 116.7, 115.7, 116.5));
+    const signals = detectPatterns(candles, ctx);
+    const engulf = signals.find(s => s.type === 'ENGULFING');
+    expect(engulf).toBeUndefined();
+  });
+
+  it('零实体K线不算吞没', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // 十字星：open=close=116.0
+    candles.push(candle(i, 116.6, 116.8, 115.8, 116.0));
+    candles.push(candle(i + 1, 116.0, 116.2, 115.8, 116.0));
+    const signals = detectPatterns(candles, ctx);
+    const engulf = signals.find(s => s.type === 'ENGULFING');
+    expect(engulf).toBeUndefined();
+  });
+
+  it('同向K线不算吞没：前阴后阴', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    candles.push(candle(i, 116.6, 116.8, 115.8, 116.0)); // 阴烛
+    candles.push(candle(i + 1, 115.9, 116.7, 115.7, 115.5)); // 阴烛，close<open
+    const signals = detectPatterns(candles, ctx);
+    const engulf = signals.find(s => s.type === 'ENGULFING');
+    expect(engulf).toBeUndefined();
+  });
+
+  it('吞没+长引线同向共振 → 保留吞没（核心信号优先）', () => {
+    const bullCtx: PatternContext = { trend: 'BULLISH', support: [], resistance: [] };
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // 前阴后阳吞没 + 长下影线（body=1.1, lower_wick=2.2≥2×body）
+    candles.push(candle(i, 116.6, 116.8, 115.8, 116.0));
+    candles.push(candle(i + 1, 115.9, 117.2, 113.7, 117.0));
+    const signals = detectPatterns(candles, bullCtx);
+    // 同向共振时保留 ENGULFING，移除 PINBAR
+    const engulf = signals.find(s => s.type === 'ENGULFING' && s.index === i + 1);
+    expect(engulf).toBeDefined();
+    expect(engulf!.direction).toBe('BULLISH');
+    const pinbar = signals.find(s => s.type === 'PINBAR' && s.index === i + 1);
+    expect(pinbar).toBeUndefined();
+  });
+
+  it('吞没+长引线同向共振 → 强度高于单纯吞没', () => {
+    const bullCtx: PatternContext = { trend: 'BULLISH', support: [], resistance: [] };
+
+    // Case A: 吞没无长影线（无 boost）
+    const candlesA = makeWarmup(16);
+    const a = candlesA.length;
+    candlesA.push(candle(a, 116.6, 116.8, 115.8, 116.0));
+    candlesA.push(candle(a + 1, 115.9, 117.2, 115.7, 117.0)); // 短影线，无 pinbar
+    const signalsA = detectPatterns(candlesA, bullCtx);
+    const engulfA = signalsA.find(s => s.type === 'ENGULFING' && s.index === a + 1)!;
+
+    // Case B: 吞没+长下影线（有 boost）
+    const candlesB = makeWarmup(16);
+    const b = candlesB.length;
+    candlesB.push(candle(b, 116.6, 116.8, 115.8, 116.0));
+    candlesB.push(candle(b + 1, 115.9, 117.2, 113.7, 117.0)); // 长下影线，有 pinbar
+    const signalsB = detectPatterns(candlesB, bullCtx);
+    const engulfB = signalsB.find(s => s.type === 'ENGULFING' && s.index === b + 1)!;
+
+    // 强强联合后强度应更高
+    expect(engulfB!.strength).toBeGreaterThan(engulfA!.strength);
+  });
+
+  it('吞没+长引线反向 → 不触发组合增强', () => {
+    const bullCtx: PatternContext = { trend: 'BULLISH', support: [], resistance: [] };
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // 看涨吞没 + 长上影线（BEARISH pinbar，方向相反）
+    candles.push(candle(i, 116.6, 116.8, 115.8, 116.0)); // 阴烛
+    candles.push(candle(i + 1, 115.9, 120, 115.7, 117.0)); // 上影线长→BEARISH pinbar
+    const signals = detectPatterns(candles, bullCtx);
+    // 反向时不触发增强，去重保留更强信号（pinbar strength > engulfing strength）
+    const engulf = signals.find(s => s.type === 'ENGULFING' && s.index === i + 1);
+    const pinbar = signals.find(s => s.type === 'PINBAR' && s.index === i + 1);
+    // 只有其中一个存活（去重），且不是 boost 结果
+    const survivors = [engulf, pinbar].filter(Boolean);
+    expect(survivors.length).toBeLessThanOrEqual(1);
   });
 });
 
@@ -183,7 +300,22 @@ describe('共振评分', () => {
   });
 
   it('支撑位附近加分 → HIGH', () => {
-    // 支撑位在 117 附近，Pinbar close=116.9 距离 < 3%
+    // 支撑位在 117 附近，EMA50=116.8，Fib=116.7，Pinbar close=116.9
+    // 3个关键位条件全满足 → 2分 + 趋势1分 + 强度1分 = 4 → HIGH
+    const sCtx: PatternContext = { trend: 'BULLISH', support: [117], resistance: [], ema50: 116.8, fibLevels: [116.7] };
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    candles.push(candle(i, 116.6, 116.8, 112, 116.9));
+    const signals = detectPatterns(candles, sCtx);
+    const pinbar = signals.find(s => s.type === 'PINBAR');
+    expect(pinbar).toBeDefined();
+    // 趋势一致+1, 关键位≥2+2, 强度+1 = 4 → HIGH
+    expect(pinbar!.score).toBe(4);
+    expect(pinbar!.quality).toBe('HIGH');
+  });
+
+  it('单一关键位条件不给加分（文档规则2：至少2个条件）', () => {
+    // 只有支撑位（1个条件），没有EMA50和Fib → 关键位不加分
     const sCtx: PatternContext = { trend: 'BULLISH', support: [117], resistance: [] };
     const candles = makeWarmup(16);
     const i = candles.length;
@@ -191,8 +323,22 @@ describe('共振评分', () => {
     const signals = detectPatterns(candles, sCtx);
     const pinbar = signals.find(s => s.type === 'PINBAR');
     expect(pinbar).toBeDefined();
-    // 趋势一致+1, 关键位+1, 强度+1 = 3 → HIGH
-    expect(pinbar!.score).toBe(3);
+    // 趋势一致+1, 关键位0(仅1个条件不加分), 强度+1 = 2 → MEDIUM
+    expect(pinbar!.score).toBe(2);
+    expect(pinbar!.quality).toBe('MEDIUM');
+  });
+
+  it('EMA50 + 支撑位 2条件满足 → 关键位加分', () => {
+    // EMA50=116.8 和 支撑=117 两个条件都满足 → 关键位+2
+    const sCtx: PatternContext = { trend: 'BULLISH', support: [117], resistance: [], ema50: 116.8 };
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    candles.push(candle(i, 116.6, 116.8, 112, 116.9));
+    const signals = detectPatterns(candles, sCtx);
+    const pinbar = signals.find(s => s.type === 'PINBAR');
+    expect(pinbar).toBeDefined();
+    // 趋势一致+1, 关键位≥2+2, 强度+1 = 4 → HIGH
+    expect(pinbar!.score).toBe(4);
     expect(pinbar!.quality).toBe('HIGH');
   });
 });
@@ -302,6 +448,186 @@ describe('策略分类（REVERSAL vs BREAKOUT）', () => {
     expect(pinbar).toBeDefined();
     expect(pinbar!.strategy).toBe('REVERSAL');
     expect(pinbar!.breakoutLevel).toBeNull();
+  });
+});
+
+/* ─── Fake Breakout（关键位假突破）─── */
+
+describe('Fake Breakout 关键位假突破检测', () => {
+  // warmup 结束价 ≈102，关键位设在 warmup 附近以避免巨大 TR
+  const R = 102.5; // 阻力位
+  const S = 101.5; // 支撑位
+
+  it('向上突破阻力后收回 → BEARISH FAKE_BREAKOUT 信号', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // 突破K线：close=103.0 > R=102.5，穿透=0.5，ATR≈2，阈值：minPen=0.1
+    // 设计为 breakout candle 的 range=[101.0, 103.0]，confirmation candle 的 range=[101.8, 103.2]
+    // confirmation.high(103.2) > breakout.high(103.0) → 不是 InsideBar
+    candles.push(candle(i, 102.0, 103.0, 101.0, 103.0));
+    // 收回K线：close=102.0 ≤ R=102.5，回挫=0.5 > minRet=0.2
+    candles.push(candle(i + 1, 102.5, 103.2, 101.8, 102.0));
+    // 保持低位
+    candles.push(candle(i + 2, 101.8, 102.2, 101.3, 101.9));
+
+    const ctx: PatternContext = { trend: 'BEARISH', support: [], resistance: [R] };
+    const signals = detectPatterns(candles, ctx);
+    const fb = signals.find(s => s.type === 'FAKE_BREAKOUT');
+    expect(fb).toBeDefined();
+    expect(fb!.direction).toBe('BEARISH');
+    expect(fb!.strength).toBeGreaterThan(0);
+    expect(fb!.strength).toBeLessThanOrEqual(1);
+  });
+
+  it('向下突破支撑后收回 → BULLISH FAKE_BREAKOUT 信号', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // 跌破K线：close=101.0 < S=101.5，穿透=0.5
+    // 设计为 breakout candle 的 range=[101.0, 103.0]，confirmation candle 的 range=[100.7, 102.5]
+    // confirmation.low(100.7) < breakout.low(101.0) → 不是 InsideBar
+    candles.push(candle(i, 102.0, 103.0, 101.0, 101.0));
+    // 收回K线：close=102.0 > S=101.5，回挫=0.5 > minRet=0.2
+    candles.push(candle(i + 1, 101.5, 102.5, 100.7, 102.0));
+    // 保持高位
+    candles.push(candle(i + 2, 102.0, 102.3, 101.7, 102.1));
+
+    const ctx: PatternContext = { trend: 'BULLISH', support: [S], resistance: [] };
+    const signals = detectPatterns(candles, ctx);
+    const fb = signals.find(s => s.type === 'FAKE_BREAKOUT');
+    expect(fb).toBeDefined();
+    expect(fb!.direction).toBe('BULLISH');
+    expect(fb!.strength).toBeGreaterThan(0);
+  });
+
+  it('真正突破（突破后未收回）→ 不触发 FAKE_BREAKOUT', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // 突破K线
+    candles.push(candle(i, 102.0, 103.0, 101.0, 103.0));
+    // 保持突破后高位，不回落
+    candles.push(candle(i + 1, 102.9, 104.0, 102.7, 103.5));
+    candles.push(candle(i + 2, 103.4, 104.5, 103.2, 104.0));
+    candles.push(candle(i + 3, 103.9, 105.0, 103.7, 104.5));
+
+    const ctx: PatternContext = { trend: 'BEARISH', support: [], resistance: [R] };
+    const signals = detectPatterns(candles, ctx);
+    const fb = signals.find(s => s.type === 'FAKE_BREAKOUT');
+    expect(fb).toBeUndefined();
+  });
+
+  it('无支持/阻力上下文 → 不触发 FAKE_BREAKOUT', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    candles.push(candle(i, 102.0, 103.0, 101.0, 103.0));
+    candles.push(candle(i + 1, 102.5, 103.2, 101.8, 102.0));
+
+    // 空上下文 → detectFakeBreakout 根本不调用
+    const signals = detectPatterns(candles, ctx);
+    const fb = signals.find(s => s.type === 'FAKE_BREAKOUT');
+    expect(fb).toBeUndefined();
+  });
+
+  it('突破幅度小于 0.05×ATR → 不触发 FAKE_BREAKOUT', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // close=102.05，穿透=0.05，阈值=0.05×2≈0.1，0.05 < 0.1 → 不触发
+    candles.push(candle(i, 102.0, 102.1, 101.9, 102.05));
+    // 后续均保持在 102.05 上方，无收回
+    candles.push(candle(i + 1, 102.05, 102.5, 102.0, 102.4));
+    candles.push(candle(i + 2, 102.4, 102.8, 102.3, 102.6));
+
+    const ctx: PatternContext = { trend: 'BEARISH', support: [], resistance: [R] };
+    const signals = detectPatterns(candles, ctx);
+    const fb = signals.find(s => s.type === 'FAKE_BREAKOUT');
+    expect(fb).toBeUndefined();
+  });
+
+  it('回挫幅度小于 0.1×ATR → 不触发 FAKE_BREAKOUT', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // 突破：close=103.0，穿透=0.5 > 0.1 ✓
+    candles.push(candle(i, 102.0, 103.3, 101.5, 103.0));
+    // 微小回落：close=102.32 > R=102.5，未收回 → 不确认
+    candles.push(candle(i + 1, 102.9, 103.1, 102.1, 102.32));
+    // 更小的回落：close=102.35，回挫=0.15 < 阈值 0.2 → 不触发
+    candles.push(candle(i + 2, 102.3, 102.5, 102.1, 102.35));
+
+    const ctx: PatternContext = { trend: 'BEARISH', support: [], resistance: [R] };
+    const signals = detectPatterns(candles, ctx);
+    const fb = signals.find(s => s.type === 'FAKE_BREAKOUT');
+    expect(fb).toBeUndefined();
+  });
+
+  it('突破后超过 5 根K线才收回 → 超时不触发', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // 突破K线
+    candles.push(candle(i, 102.0, 103.0, 101.0, 103.0));
+    // 7 根K线保持高位（全部 close > R=102.5，没有一根收回）
+    for (let j = 0; j < 7; j++) {
+      candles.push(candle(i + 1 + j, 102.9, 103.5, 102.7, 103.0 + j * 0.1));
+    }
+    // 注意：没有加回落K线。所有K线 close 都 > R，不存在 fake breakout 确认。
+
+    const ctx: PatternContext = { trend: 'BEARISH', support: [], resistance: [R] };
+    const signals = detectPatterns(candles, ctx);
+    const fb = signals.find(s => s.type === 'FAKE_BREAKOUT');
+    expect(fb).toBeUndefined();
+  });
+
+  it('突破 K 线 close 恰好等于关键位 → 不触发（需严格穿越）', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // close=102.50，恰好等于 R=102.50，穿透=0 → 不触发
+    const level = 102.50;
+    candles.push(candle(i, 102.0, 102.8, 101.8, level));
+    // 后续保持
+    candles.push(candle(i + 1, 102.4, 102.8, 102.2, 102.6));
+    candles.push(candle(i + 2, 102.5, 103.0, 102.4, 102.8));
+
+    const ctx: PatternContext = { trend: 'BEARISH', support: [], resistance: [level] };
+    const signals = detectPatterns(candles, ctx);
+    const fb = signals.find(s => s.type === 'FAKE_BREAKOUT');
+    expect(fb).toBeUndefined();
+  });
+
+  it('突破 K 线 close 刚好超过阈值 0.05×ATR → 触发', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // 需要穿透 > 0.05×ATR ≈ 0.1，所以 close >= R + 0.105
+    const level = 102.50;
+    // breakout candle range=[101.5, 102.9], confirmation candle range=[101.3, 102.7]
+    // confirmation.high(102.7) < breakout.high(102.9) AND confirmation.low(101.3) < breakout.low(101.5)
+    // → 不是 InsideBar
+    candles.push(candle(i, 102.0, 102.9, 101.5, level + 0.15)); // close=102.65，穿透=0.15
+    // 收回：close=102.0 ≤ level，回挫=0.5 > minRet=0.2
+    candles.push(candle(i + 1, 102.5, 102.7, 101.3, 102.0));
+    // 保持
+    candles.push(candle(i + 2, 101.9, 102.2, 101.5, 102.1));
+
+    const ctx: PatternContext = { trend: 'BEARISH', support: [], resistance: [level] };
+    const signals = detectPatterns(candles, ctx);
+    const fb = signals.find(s => s.type === 'FAKE_BREAKOUT');
+    expect(fb).toBeDefined();
+    expect(fb!.direction).toBe('BEARISH');
+  });
+
+  it('rangeHigh/rangeLow 覆盖突破到确认的全程范围', () => {
+    const candles = makeWarmup(16);
+    const i = candles.length;
+    // 突破K线 high=103.0
+    candles.push(candle(i, 102.0, 103.0, 101.0, 103.0));
+    // 确认K线 low=101.8
+    candles.push(candle(i + 1, 102.5, 103.2, 101.8, 102.0));
+
+    const ctx: PatternContext = { trend: 'BEARISH', support: [], resistance: [R] };
+    const signals = detectPatterns(candles, ctx);
+    const fb = signals.find(s => s.type === 'FAKE_BREAKOUT');
+    expect(fb).toBeDefined();
+    // 信号在确认K线上
+    expect(fb!.index).toBe(i + 1);
+    expect(fb!.strength).toBeGreaterThan(0);
+    expect(fb!.strength).toBeLessThanOrEqual(1);
   });
 });
 

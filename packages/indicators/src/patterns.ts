@@ -270,6 +270,237 @@ function detectFakey(
   return signals;
 }
 
+/* ─── Fake Breakout（关键位假突破）─── */
+
+/**
+ * 关键位假突破检测（文档"读懂假突破套路"陷阱3）：
+ *
+ * 价格向阻力突破后快速收回 → 假突破（BEARISH 信号）
+ * 价格向支撑跌破后快速收回 → 假突破（BULLISH 信号）
+ *
+ * 核心逻辑：突破后没有加速延续（突破不加速、强势变滞涨），
+ * 而是停滞震荡后回落，确认假突破后散户追突破的止损集中触发，
+ * 顺势反向收割流动性。
+ *
+ * 检测条件：
+ *   1. 当前 K 线收盘突破关键位（阻力向上突破 / 支撑向下跌破）
+ *   2. 突破幅度 > 0.05×ATR（排除微小穿透）
+ *   3. 后续 2~5 根 K 线内收盘价回到关键位内侧（突破失败确认）
+ *   4. 假突破确认后，反向信号强度综合穿透深度、回落幅度和量能变化
+ */
+const FAKE_BO_LOOKBACK = 30;       // 回溯窗口
+const FAKE_BO_MIN_PEN = 0.05;      // 最小穿透幅度（ATR）
+const FAKE_BO_MIN_RETRACE = 0.1;   // 最小回挫幅度（ATR）
+const FAKE_BO_MAX_CONFIRM = 5;     // 最大确认窗口（K线根数）
+
+/**
+ * 检测关键位假突破，返回假突破后反向确认的信号（BEARISH/BULLISH）。
+ *
+ * 信号方向与突破方向相反：
+ *   向上突破阻力后失败 → BEARISH（顺势做空）
+ *   向下突破支撑后失败 → BULLISH（顺势做多）
+ */
+function detectFakeBreakout(
+  candles: CandleDto[],
+  context: PatternContext,
+  atrArr: number[],
+): RawPattern[] {
+  const signals: RawPattern[] = [];
+  const n = candles.length;
+
+  for (let i = n - 1; i >= Math.max(5, n - FAKE_BO_LOOKBACK); i--) {
+    const c = candles[i]!;
+    const atrVal = atrArr[i] || 0;
+    if (atrVal <= 0) continue;
+
+    // ── 测试 1：向上突破阻力 → 假突破失败 → BEARISH 信号 ──
+    for (const level of context.resistance) {
+      const penetration = c.close - level;
+      if (penetration <= 0 || penetration <= atrVal * FAKE_BO_MIN_PEN) continue;
+
+      // 检查后续 2~5 根是否收回（回挫到 level 下方）
+      const endIdx = Math.min(i + 1 + FAKE_BO_MAX_CONFIRM, n);
+      let confirmed = false;
+      let confirmIdx = -1;
+      let pullback = 0;
+
+      for (let j = i + 1; j < endIdx; j++) {
+        const cj = candles[j]!;
+        if (cj.close <= level) {
+          confirmed = true;
+          confirmIdx = j;
+          pullback = level - cj.close;
+          break;
+        }
+      }
+      if (!confirmed) continue;
+
+      if (pullback < atrVal * FAKE_BO_MIN_RETRACE) continue;
+
+      // 计算假突破事件的全程范围（突破K线到确认K线）
+      let evHigh = -Infinity;
+      let evLow = Infinity;
+      for (let j = i; j <= confirmIdx; j++) {
+        evHigh = Math.max(evHigh, candles[j]!.high);
+        evLow = Math.min(evLow, candles[j]!.low);
+      }
+
+      const baseVol = avgVolume(candles, i, 5);
+      const volR = baseVol > 0 ? c.volume / baseVol : 1;
+      const strength = Math.min(
+        Math.min(penetration / atrVal, 1) + Math.min(pullback / atrVal, 1) + Math.abs(volR - 1) * 0.3,
+        1.0,
+      );
+
+      signals.push({
+        type: 'FAKE_BREAKOUT',
+        direction: 'BEARISH',
+        strength,
+        index: confirmIdx,
+        time: candles[confirmIdx]!.time,
+        rangeHigh: evHigh,
+        rangeLow: evLow,
+      });
+      break;
+    }
+
+    // ── 测试 2：向下突破支撑 → 假突破失败 → BULLISH 信号 ──
+    for (const level of context.support) {
+      const penetration = level - c.close;
+      if (penetration <= 0 || penetration <= atrVal * FAKE_BO_MIN_PEN) continue;
+
+      const endIdx = Math.min(i + 1 + FAKE_BO_MAX_CONFIRM, n);
+      let confirmed = false;
+      let confirmIdx = -1;
+      let pullback = 0;
+
+      for (let j = i + 1; j < endIdx; j++) {
+        const cj = candles[j]!;
+        if (cj.close >= level) {
+          confirmed = true;
+          confirmIdx = j;
+          pullback = cj.close - level;
+          break;
+        }
+      }
+      if (!confirmed) continue;
+
+      if (pullback < atrVal * FAKE_BO_MIN_RETRACE) continue;
+
+      let evHigh = -Infinity;
+      let evLow = Infinity;
+      for (let j = i; j <= confirmIdx; j++) {
+        evHigh = Math.max(evHigh, candles[j]!.high);
+        evLow = Math.min(evLow, candles[j]!.low);
+      }
+
+      const baseVol = avgVolume(candles, i, 5);
+      const volR = baseVol > 0 ? c.volume / baseVol : 1;
+      const strength = Math.min(
+        Math.min(penetration / atrVal, 1) + Math.min(pullback / atrVal, 1) + Math.abs(volR - 1) * 0.3,
+        1.0,
+      );
+
+      signals.push({
+        type: 'FAKE_BREAKOUT',
+        direction: 'BULLISH',
+        strength,
+        index: confirmIdx,
+        time: candles[confirmIdx]!.time,
+        rangeHigh: evHigh,
+        rangeLow: evLow,
+      });
+      break;
+    }
+  }
+
+  return signals;
+}
+
+/** 计算 index 之前 period 根 K 线的平均成交量 */
+function avgVolume(candles: CandleDto[], beforeIdx: number, period: number): number {
+  const start = Math.max(0, beforeIdx - period);
+  if (start >= beforeIdx) return 0;
+  let sum = 0;
+  let cnt = 0;
+  for (let k = start; k < beforeIdx; k++) {
+    sum += candles[k]!.volume;
+    cnt++;
+  }
+  return cnt > 0 ? sum / cnt : 0;
+}
+
+/* ─── Engulfing（看涨/看跌吞没）─── */
+
+/**
+ * 看涨吞没（Bullish Engulfing）：阳烛实体完全包裹前一根阴烛实体。
+ * 文档原文："阳线实体完全包裹前一根K线，代表这个位置多头进攻动能很强。"
+ *
+ * 条件：
+ *   - 前一根为阴烛（close < open）
+ *   - 当前为阳烛（close > open）
+ *   - 当前 open ≤ 前根 close（当前实体上沿覆盖前根实体下沿）
+ *   - 当前 close ≥ 前根 open（当前实体下沿覆盖前根实体上沿）
+ *
+ * 看跌吞没（Bearish Engulfing）相反：前一根阳烛，当前阴烛完全包裹。
+ *
+ * 强度 = 当前K线实体 / ATR，与 Pinbar 的影线/ATR 对称。
+ * 突破参考价 = 当前K线的 high/low（形态确认后的突破范围）。
+ */
+function detectEngulfingAt(
+  current: CandleDto,
+  prev: CandleDto,
+  index: number,
+  atrVal: number,
+): RawPattern | null {
+  const prevBody = Math.abs(prev.close - prev.open);
+  const currBody = Math.abs(current.close - current.open);
+
+  // 零实体跳过（十字星不构成吞没）
+  if (prevBody === 0 || currBody === 0) return null;
+  if (atrVal === 0) return null;
+
+  const prevIsBearish = prev.close < prev.open;
+  const currIsBullish = current.close > current.open;
+
+  // 看涨吞没：前阴后阳，阳实体完全包裹前阴实体
+  if (prevIsBearish && currIsBullish) {
+    if (current.open <= prev.close && current.close >= prev.open) {
+      const strength = Math.min(currBody / atrVal, 1.0);
+      return {
+        type: 'ENGULFING',
+        direction: 'BULLISH',
+        strength,
+        index,
+        time: current.time,
+        rangeHigh: current.high,
+        rangeLow: current.low,
+      };
+    }
+  }
+
+  // 看跌吞没：前阳后阴，阴实体完全包裹前阳实体
+  const prevIsBullish = prev.close > prev.open;
+  const currIsBearish = current.close < current.open;
+
+  if (prevIsBullish && currIsBearish) {
+    if (current.open >= prev.close && current.close <= prev.open) {
+      const strength = Math.min(currBody / atrVal, 1.0);
+      return {
+        type: 'ENGULFING',
+        direction: 'BEARISH',
+        strength,
+        index,
+        time: current.time,
+        rangeHigh: current.high,
+        rangeLow: current.low,
+      };
+    }
+  }
+
+  return null;
+}
+
 /* ─── 策略分类 & 突破价位 ─── */
 
 /**
@@ -338,6 +569,13 @@ function calcRetracementEntry(signal: RawPattern): number | null {
 
 /* ─── 共振评分 ─── */
 
+/**
+ * 检查价格是否在某个关键位附近（3% 以内）
+ */
+function nearLevel(price: number, levels: number[]): boolean {
+  return levels.some((l) => Math.abs(price - l) / Math.max(Math.abs(price), Math.abs(l)) <= 0.03);
+}
+
 function scoreResonance(
   dir: PatternDirection,
   strength: number,
@@ -350,11 +588,19 @@ function scoreResonance(
   if (dir === 'BULLISH' && context.trend === 'BULLISH') score++;
   if (dir === 'BEARISH' && context.trend === 'BEARISH') score++;
 
-  // 关键位附近（3% 以内）
+  // 关键位检查（文档规则2：至少满足 2 个条件）
+  // 条件1: 价格回调至 EMA50
   const price = candle.close;
-  const nearLevel = context.support.some((s: number) => Math.abs(price - s) / s <= 0.03) ||
-                    context.resistance.some((r: number) => Math.abs(price - r) / r <= 0.03);
-  if (nearLevel) score++;
+  const nearEma50 = context.ema50 != null && context.ema50 > 0 && nearLevel(price, [context.ema50]);
+  // 条件2: 价格回调至支撑/阻力位（pivot 高低点）
+  const nearSRL = (context.support.length > 0 && nearLevel(price, context.support)) ||
+                   (context.resistance.length > 0 && nearLevel(price, context.resistance));
+  // 条件3: 价格回调至 Fibonacci 黄金分割位
+  const nearFib = context.fibLevels && context.fibLevels.length > 0 && nearLevel(price, context.fibLevels);
+
+  const keyLevelCount = (nearEma50 ? 1 : 0) + (nearSRL ? 1 : 0) + (nearFib ? 1 : 0);
+  if (keyLevelCount >= 2) score += 2;
+  // 1 个条件不算"合格关键位"（文档规则2：至少满足2个条件），不给加分
 
   // 强度足够
   if (strength >= 0.5) score++;
@@ -402,11 +648,50 @@ export function detectPatterns(
     // Inside Bar
     const inside = detectInsideBarAt(candle, prev, i);
     if (inside) rawSignals.push(inside);
+
+    // Engulfing（看涨/看跌吞没）
+    const engulf = detectEngulfingAt(candle, prev, i, atrVal);
+    if (engulf) rawSignals.push(engulf);
   }
 
   // Fakey（状态机跨多根K线）
   for (const f of detectFakey(candles, atrArr)) {
     rawSignals.push(f);
+  }
+
+  // Fake Breakout（关键位假突破，需要支持/阻力上下文）
+  if (context.support.length > 0 || context.resistance.length > 0) {
+    for (const f of detectFakeBreakout(candles, context, atrArr)) {
+      rawSignals.push(f);
+    }
+  }
+
+  // 吞没 + 长引线组合增强（文档规则3：吞没是核心信号，长引线是加分项，两者共振="强强联合"）
+  // 当 ENGULFING 和 PINBAR 在同一根 K 线上出现且方向一致时：
+  // 1. 提升 ENGULFING 强度 ×1.3（动能彻底反转 + 动能衰竭 = 更强信号）
+  // 2. 移除同位置的 PINBAR（ENGULFING 是核心信号，按文档优先级保留）
+  {
+    const pinbarMap = new Map<number, PatternDirection>();
+    for (const s of rawSignals) {
+      if (s.type === 'PINBAR') pinbarMap.set(s.index, s.direction);
+    }
+    const removePinbar = new Set<number>();
+    for (let k = 0; k < rawSignals.length; k++) {
+      const s = rawSignals[k]!;
+      if (s.type === 'ENGULFING') {
+        const pinDir = pinbarMap.get(s.index);
+        if (pinDir === s.direction) {
+          rawSignals[k] = { ...s, strength: Math.min(s.strength * 1.3, 1.0) };
+          removePinbar.add(s.index);
+        }
+      }
+    }
+    for (let k = rawSignals.length - 1; k >= 0; k--) {
+      const s = rawSignals[k]!;
+      if (s.type === 'PINBAR' && removePinbar.has(s.index)) {
+        rawSignals.splice(k, 1);
+      }
+    }
   }
 
   // 去重（同一根K线可能出现多个形态，只保留最强的）

@@ -136,7 +136,7 @@ export function buildEntryBand(plan: TradePlan | null): EntryBand | null {
 const PAT_MARKER = '#ab47bc';
 
 /** 形态名称短标签 */
-const PAT_LABEL: Record<string, string> = { PINBAR: 'P', INSIDE_BAR: 'IB', FAKEY: 'FK' };
+const PAT_LABEL: Record<string, string> = { PINBAR: 'P', INSIDE_BAR: 'IB', FAKEY: 'FK', ENGULFING: 'EG' };
 
 /**
  * 将形态信号转换为 lightweight-charts 的 SeriesMarker 数组。
