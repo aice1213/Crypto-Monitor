@@ -7,6 +7,7 @@ import type {
   TickerDto,
   FundingRateDto,
   PatternSignal,
+  MacdAdvancedSignal,
 } from '@crypto-monitor/shared';
 import { AI_REGEN_COOLDOWN_MS, fmtPrice, formatBeijingTime } from '@crypto-monitor/shared';
 import { api } from '../../lib/api';
@@ -437,6 +438,23 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
   const revEntry = rev?.entryPrice != null && rev.verdict !== 'NO_REVERSAL' ? ` · 入场${fmtPrice(rev.entryPrice)}` : '';
   const revDetail = rev ? `共振${rev.resonanceCount}/4 · ${revDir} · ${revSigStr}${revEntry}` : '数据不足';
 
+  // ── MACD 高阶分析增强 ──
+  const ma = snapshot.macdAdvanced;
+  const maSignalText = (s: MacdAdvancedSignal): string => {
+    if (s === 'LONG') return '做多信号';
+    if (s === 'SHORT') return '做空信号';
+    return '';
+  };
+  const maSignalLabel = ma?.actionableSignal !== 'NONE' && ma?.actionableSignal ? ` ${maSignalText(ma.actionableSignal)}` : '';
+  const maMomIcon = ma?.momentum === 'STRONG' ? '🔥' : ma?.momentum === 'MEDIUM' ? '📊' : ma?.momentum === 'WEAK' ? '🪶' : '';
+  const maMomLabel = ma?.momentum === 'STRONG' ? '强' : ma?.momentum === 'MEDIUM' ? '中' : ma?.momentum === 'WEAK' ? '弱' : '';
+  const maSepIcon = ma?.separation === 'BULLISH_SEP' ? '↑' : ma?.separation === 'BEARISH_SEP' ? '↓' : '';
+  const maContract = ma?.contracting ? ' · 收缩' : '';
+  const maDetailExtra = ma && ma.momentum !== 'EMPTY' ? ` · ${maMomIcon}${maMomLabel}${maSepIcon}${maContract}` : '';
+  const maMeaning = ma?.interpretation && ma.interpretation !== '数据不足，MACD 高阶分析需至少 5 根 K 线'
+    ? ma.interpretation
+    : macd.meaning;
+
   return [
     {
       title: ema.title,
@@ -444,9 +462,9 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
       meaning: ema.meaning,
     },
     {
-      title: macd.title,
-      detail: `DIF ${snapshot.macd.dif.toFixed(4)} / DEA ${snapshot.macd.dea.toFixed(4)}`,
-      meaning: macd.meaning,
+      title: `MACD ${macd.title.includes('金叉') ? '🟢' : macd.title.includes('死叉') ? '🔴' : '⚪'}${maSignalLabel}`,
+      detail: `DIF ${snapshot.macd.dif.toFixed(4)} / DEA ${snapshot.macd.dea.toFixed(4)} · 柱${snapshot.macd.hist.toFixed(4)}${maDetailExtra}`,
+      meaning: maMeaning,
     },
     {
       title: vp.title,
