@@ -415,15 +415,6 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
     ? `${tsDirIcon} ${tsDirLabel} · ${tsPattern}${tsCount ? ' · ' + tsCount : ''} ${tsBreakIcon}`
     : '数据不足';
 
-  // ── 趋势健康度 ──
-  const ph = snapshot.pullbackHealth;
-  const phIcon = ph?.rating === 'STRONG' ? '🟢' : ph?.rating === 'HEALTHY' ? '🟢' : ph?.rating === 'NORMAL' ? '🟡' : ph?.rating === 'DEEP' ? '🟠' : ph?.rating === 'BROKEN' ? '🔴' : '⚪';
-  const phDirLabel = ph?.trendDir === 'UP' ? '↑' : ph?.trendDir === 'DOWN' ? '↓' : '⚪';
-  const phPct = ph ? `${(ph.pullbackPct * 100).toFixed(0)}%` : '—';
-  const phVol = ph && ph.volumeRatio > 0 ? ` · 量比${ph.volumeRatio.toFixed(2)}` : '';
-  const phSlope = ph && ph.atrSlope !== 0 ? ` · 斜率${ph.atrSlope > 0 ? '+' : ''}${ph.atrSlope.toFixed(2)}` : '';
-  const phDetail = ph ? `${phDirLabel} ${ph.state} · ${phPct}${phVol}${phSlope}` : '数据不足';
-
   // ── 反转入场信号 ──
   const rev = snapshot.reversalEntry;
   const revIcon = rev?.verdict === 'STRONG_REVERSAL' ? '🔴' : rev?.verdict === 'REVERSAL_WATCH' ? '🟡' : '🟢';
@@ -480,11 +471,6 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
       title: `趋势结构 ${tsDirIcon} ${tsDirLabel}`,
       detail: tsDetail,
       meaning: ts?.interpretation ?? '数据不足',
-    },
-    {
-      title: `趋势健康 ${phIcon}`,
-      detail: phDetail,
-      meaning: ph?.interpretation ?? '数据不足',
     },
     {
       title: `反转入场 ${revIcon} ${revLabel}`,
