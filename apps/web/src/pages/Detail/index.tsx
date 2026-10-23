@@ -1013,11 +1013,11 @@ export function Detail() {
           <div className="bg-card border border-cardborder rounded-lg p-4 mb-4">
             <h2 className="text-white font-semibold mb-3">决策面板</h2>
 
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="text-gray-500 text-xs">10 秒结论</div>
+              <div className="text-gray-500 text-xs">周期 {interval} · 数据 {ticker ? renderTime(ticker.ts) : '--'}</div>
+            </div>
             <div className="rounded-lg bg-black/20 border border-cardborder p-3 text-sm mb-4">
-              <div className="flex items-center justify-between gap-3 mb-2">
-                <div className="text-gray-500 text-xs">10 秒结论</div>
-                <div className="text-gray-500 text-xs">周期 {interval} · 数据 {ticker ? renderTime(ticker.ts) : '--'}</div>
-              </div>
               <div className="text-white whitespace-pre-line">{decisionSummary(snapshot, symbol, ticker?.last, funding?.fundingRate)}</div>
             </div>
 
