@@ -73,6 +73,7 @@ export async function getCached<T>(
 const staleStore = new Map<string, CacheEntry<unknown>>();
 
 export function setStale<T>(key: string, data: T) {
+  if (staleStore.size > 100) staleStore.clear();
   staleStore.set(key, { data, ts: nowMs(), ttlMs: 60_000 });
 }
 
