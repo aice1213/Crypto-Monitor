@@ -70,6 +70,8 @@ export interface PatternSignal {
   breakoutLevel: number | null;
   /** 50%回调限价进场价（仅 REVERSAL 策略针形K线），null = 不适用 */
   retracementEntry: number | null;
+  /** 是否为健康回调：逆势方向且蜡烛实体小（strength<0.3），趋势仍健康，不构成反转信号 */
+  counterTrendPullback?: boolean;
 }
 
 export interface PatternContext {

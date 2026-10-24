@@ -581,10 +581,14 @@ function scoreResonance(
   strength: number,
   candle: CandleDto,
   context: PatternContext,
-): { score: number; quality: PatternQuality } {
+  atrVal: number,
+): { score: number; quality: PatternQuality; counterTrendPullback: boolean } {
   let score = 0;
 
   // 趋势一致
+  const counterTrend = (dir === 'BULLISH' && context.trend === 'BEARISH') ||
+                       (dir === 'BEARISH' && context.trend === 'BULLISH');
+
   if (dir === 'BULLISH' && context.trend === 'BULLISH') score++;
   if (dir === 'BEARISH' && context.trend === 'BEARISH') score++;
 
@@ -605,8 +609,21 @@ function scoreResonance(
   // 强度足够
   if (strength >= 0.5) score++;
 
+  // 健康回调检测（文档"回调走势：小蜡烛验证趋势健康度"）
+  // 用蜡烛实体大小（body/ATR）判断，而非 strength（影线/ATR）
+  // 逆势方向且实体小（body/ATR < 0.3）= 健康回调，趋势仍健康，不构成反转信号
+  // 此时扣减 2 分（抵消关键位加分），质量最高为 LOW
+  let counterTrendPullback = false;
+  if (counterTrend && atrVal > 0) {
+    const bodyATR = Math.abs(candle.close - candle.open) / atrVal;
+    if (bodyATR < 0.3) {
+      counterTrendPullback = true;
+      score = Math.max(score - 2, 0);
+    }
+  }
+
   const quality: PatternQuality = score >= 3 ? 'HIGH' : score === 2 ? 'MEDIUM' : 'LOW';
-  return { score, quality };
+  return { score, quality, counterTrendPullback };
 }
 
 /* ─── 主函数 ─── */
@@ -710,13 +727,13 @@ export function detectPatterns(
     .map((s): PatternSignal => {
       const candle = candles[s.index]!;
       const atrVal = atrArr[s.index] || 0;
-      const { score, quality } = scoreResonance(s.direction, s.strength, candle, context);
+      const { score, quality, counterTrendPullback } = scoreResonance(s.direction, s.strength, candle, context, atrVal);
       const failed = checkPatternOutcome(s, candles);
       const strategy = classifyStrategy(candle, context);
       const breakoutLevel = strategy === 'BREAKOUT' ? calcBreakoutLevel(s, atrVal) : null;
       // 50% 回调限价进场价：仅 REVERSAL 策略的针形K线适用
       const retracementEntry = strategy === 'REVERSAL' && s.type === 'PINBAR' ? calcRetracementEntry(s) : null;
-      return { ...s, quality, score, failed, strategy, breakoutLevel, retracementEntry, eventZoneId: null };
+      return { ...s, quality, score, failed, strategy, breakoutLevel, retracementEntry, counterTrendPullback, eventZoneId: null };
     })
     .sort((a, b) => b.index - a.index)
     .slice(0, maxSignals);

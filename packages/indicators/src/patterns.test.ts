@@ -704,3 +704,88 @@ describe('50% 回调限价进场（retracementEntry）', () => {
     expect(r).toBeLessThan(116.8);  // rangeHigh
   });
 });
+
+describe('健康回调检测（逆势小蜡烛）', () => {
+  function makeWarmupBears(count: number): CandleDto[] {
+    // ATR warmup: large bearish candles so the subsequent small bullish candles
+    // have small bodies relative to ATR (strength < 0.3).
+    const candles: CandleDto[] = [];
+    for (let i = 0; i < count; i++) {
+      const open = 120 - i * 1.0;
+      candles.push(candle(i, open, open + 0.2, open - 1.5, open - 1.2));
+    }
+    return candles;
+  }
+
+  function addBullishPinbar(candles: CandleDto[]): CandleDto {
+    const n = candles.length;
+    // Small body (~0.15), long lower wick (2.0) → BULLISH PINBAR with low strength
+    const c = candle(n, 100.5, 100.7, 98.5, 100.65);
+    candles.push(c);
+    return c;
+  }
+
+  it('BEARISH 趋势 + 看涨小蜡烛（健康回调）→ quality LOW，counterTrendPullback=true', () => {
+    const candles = makeWarmupBears(18);
+    addBullishPinbar(candles);
+    const ctx: PatternContext = { trend: 'BEARISH', support: [], resistance: [] };
+    const signals = detectPatterns(candles, ctx);
+    const pin = signals.find((s) => s.type === 'PINBAR' && s.direction === 'BULLISH');
+    expect(pin).toBeDefined();
+    expect(pin!.counterTrendPullback).toBe(true);
+    expect(pin!.quality).toBe('LOW');
+  });
+
+  it('BEARISH 趋势 + 看涨小蜡烛 + 2 关键位 → 健康回调抵消关键位加分，仍为 LOW', () => {
+    const candles = makeWarmupBears(18);
+    const bull = addBullishPinbar(candles);
+    const price = bull.close;
+    // 2 key level conditions: support + resistance both within 3% of price
+    const ctx: PatternContext = { trend: 'BEARISH', support: [price * 0.995], resistance: [price * 1.005] };
+    const signals = detectPatterns(candles, ctx);
+    const pin = signals.find((s) => s.type === 'PINBAR' && s.direction === 'BULLISH');
+    expect(pin).toBeDefined();
+    expect(pin!.counterTrendPullback).toBe(true);
+    // Without pullback deduction, score would be 2 (key levels) = MEDIUM.
+    // With -2 deduction, score = 0 = LOW.
+    expect(pin!.score).toBe(0);
+    expect(pin!.quality).toBe('LOW');
+  });
+
+  it('BEARISH 趋势 + 看涨大蜡烛（strength>=0.3）→ 不是健康回调，正常评分', () => {
+    const candles = makeWarmupBears(18);
+    // Large bullish candle: big body + long wick → high strength
+    const n = candles.length;
+    candles.push(candle(n, 99.5, 100.7, 96.5, 100.6));
+    const ctx: PatternContext = { trend: 'BEARISH', support: [], resistance: [] };
+    const signals = detectPatterns(candles, ctx);
+    const pin = signals.find((s) => s.type === 'PINBAR' && s.direction === 'BULLISH');
+    expect(pin).toBeDefined();
+    // Strong candle: strength >= 0.3, so NOT a healthy pullback
+    expect(pin!.counterTrendPullback).toBe(false);
+  });
+
+  it('BULLISH 趋势 + 看涨小蜡烛 → 顺势，不是健康回调', () => {
+    const candles = makeWarmup(18);
+    // Small bullish pinbar in an uptrend
+    candles.push(candle(candles.length, 100.5, 100.7, 98.5, 100.65));
+    const ctx: PatternContext = { trend: 'BULLISH', support: [], resistance: [] };
+    const signals = detectPatterns(candles, ctx);
+    const pin = signals.find((s) => s.type === 'PINBAR' && s.direction === 'BULLISH');
+    expect(pin).toBeDefined();
+    expect(pin!.counterTrendPullback).toBe(false);
+  });
+
+  it('BEARISH 趋势 + 看跌小蜡烛 → 顺势，不是健康回调', () => {
+    const candles = makeWarmupBears(18);
+    // Small bearish candle in a downtrend
+    candles.push(candle(candles.length, 100.7, 100.7, 99.3, 99.5));
+    const ctx: PatternContext = { trend: 'BEARISH', support: [], resistance: [] };
+    const signals = detectPatterns(candles, ctx);
+    const bear = signals.find((s) => s.type === 'PINBAR' && s.direction === 'BEARISH');
+    // May or may not detect, but if it does, it's NOT a counter-trend pullback
+    if (bear) {
+      expect(bear.counterTrendPullback).toBe(false);
+    }
+  });
+});

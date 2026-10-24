@@ -597,6 +597,7 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
   const longVolOk = snapshot.obv.volumeRatio >= 0.8;
   const longObvInflow = snapshot.obv.flow === 'INFLOW';
   const longNoBearDivergence = snapshot.obv.volumeRatio < 2.0 || snapshot.obv.flow !== 'OUTFLOW'; // 无巨量出货
+  const longBreakoutOk = levels.upperResistanceValue != null && price >= levels.upperResistanceValue;
 
   const shortNearResistance =
     levels.upperResistanceValue != null && price >= levels.upperResistanceValue * 0.98;
@@ -604,6 +605,7 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
   const shortMacdOk = snapshot.macd.hist < 0;
   const shortVolOk = snapshot.obv.volumeRatio >= 0.8;
   const shortObvOutflow = snapshot.obv.flow === 'OUTFLOW';
+  const shortBreakdownOk = levels.immediateSupportValue != null && price <= levels.immediateSupportValue;
 
   // ── 动作：只能来自引擎 plan ──
   const action = plan ? (plan.side === 'LONG' ? '做多' : '做空') : '观望';
@@ -641,20 +643,20 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
   return {
     action,
     long: [
-      `价格接近最近支撑（${levels.immediateSupport}）${longNearSupport ? '✓' : '✗'}`,
-      `站上 ${levels.upperResistance} 突破确认`,
-      `量价无背离，量比≥0.8${longVolOk ? ' ✓' : ' ✗'}${!longNoBearDivergence ? ' · 巨量出货⚠️' : ''}`,
-      longObvInflow ? 'OBV 流入 ✓' : '等 OBV 流入 ✗',
-      `RSI > 50，当前 ${snapshot.rsi14.toFixed(1)} ${longRsiOk ? '✓' : '✗'}`,
-      longMacdOk ? 'MACD 柱线已转正 ✓' : '等 MACD 柱线转正 ✗',
+      { text: `价格接近最近支撑（${levels.immediateSupport}）`, ok: longNearSupport },
+      { text: `站上 ${levels.upperResistance} 突破确认`, ok: longBreakoutOk },
+      { text: `量价无背离，量比≥0.8`, ok: longVolOk && longNoBearDivergence, warn: !longNoBearDivergence ? '巨量出货' : undefined },
+      { text: 'OBV 流入', ok: longObvInflow },
+      { text: `RSI > 50，当前 ${snapshot.rsi14.toFixed(1)}`, ok: longRsiOk },
+      { text: 'MACD 柱线已转正', ok: longMacdOk },
     ],
     short: [
-      `价格接近最近阻力（${levels.upperResistance}）${shortNearResistance ? '✓' : '✗'}`,
-      `跌破 ${levels.immediateSupport} 确认转弱`,
-      `放量确认，量比≥0.8${shortVolOk ? ' ✓' : ' ✗'}`,
-      shortObvOutflow ? 'OBV 流出 ✓' : '等 OBV 流出 ✗',
-      `RSI < 50，当前 ${snapshot.rsi14.toFixed(1)} ${shortRsiOk ? '✓' : '✗'}`,
-      shortMacdOk ? 'MACD 柱线已转负 ✓' : '等 MACD 柱线转负 ✗',
+      { text: `价格接近最近阻力（${levels.upperResistance}）`, ok: shortNearResistance },
+      { text: `跌破 ${levels.immediateSupport} 确认转弱`, ok: shortBreakdownOk },
+      { text: '放量确认，量比≥0.8', ok: shortVolOk },
+      { text: 'OBV 流出', ok: shortObvOutflow },
+      { text: `RSI < 50，当前 ${snapshot.rsi14.toFixed(1)}`, ok: shortRsiOk },
+      { text: 'MACD 柱线已转负', ok: shortMacdOk },
     ],
     longPlan: {
       entryLow: fmtLevel(longZoneLo),
@@ -663,6 +665,7 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
       tp1: fmtLevel(longTP1),
       tp2: fmtLevel(longTP2),
       rr: longRR.toFixed(2),
+      rrNum: longRR,
     },
     shortPlan: {
       entryLow: fmtLevel(shortZoneLo),
@@ -671,8 +674,9 @@ function tradePlan(snapshot: IndicatorSnapshotDto, current?: number) {
       tp1: fmtLevel(shortTP1),
       tp2: fmtLevel(shortTP2),
       rr: shortRR.toFixed(2),
+      rrNum: shortRR,
     },
-    invalidation: `失效条件：站上 ${levels.upperResistance} 空头失效；跌破 ${levels.downsideRisk} 多头失效`,
+    invalidation: `站上 ${levels.upperResistance} 空头失效；跌破 ${levels.downsideRisk} 多头失效`,
   };
 }
 
@@ -1081,47 +1085,101 @@ export function Detail() {
             </div>
 
             <div className="mb-4">
-              <div className="text-gray-500 text-xs mb-2">交易计划</div>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="text-gray-500 text-xs">交易计划</div>
+                {(() => {
+                  const a = tp?.action;
+                  const cls = a === '做多' ? 'bg-up/20 text-up border-up/50'
+                    : a === '做空' ? 'bg-down/20 text-down border-down/50'
+                    : 'bg-amber-500/15 text-amber-400 border-amber-500/40';
+                  return (
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cls}`}>
+                      ⬤ {a}
+                    </span>
+                  );
+                })()}
+              </div>
               <div className="rounded-lg border border-cardborder bg-black/10 p-3 text-sm">
-                <div className="mb-3 text-white font-semibold">当前动作: {tp?.action}</div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                  <div className="border border-up/40 rounded-lg p-3">
-                    <div className="text-up font-medium mb-2">做多需满足</div>
-                    <ul className="space-y-1 text-gray-300 text-sm list-disc list-inside">
-                      {tp?.long.map((line, idx) => (
-                        <li key={idx}>{line}</li>
-                      ))}
-                    </ul>
-                    <div className="mt-3 text-xs text-gray-300 space-y-1">
-                      <div>进场区：{tp?.longPlan?.entryLow}–{tp?.longPlan?.entryHigh}</div>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                        <div>目标1：{tp?.longPlan?.tp1}</div>
-                        <div>目标2：{tp?.longPlan?.tp2}</div>
-                        <div>止损：{tp?.longPlan?.sl}</div>
-                        <div>盈亏比：{tp?.longPlan?.rr}</div>
-                      </div>
+                {/* 参数区（上） */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="border border-up/30 rounded-lg p-3">
+                    <div className="text-up font-medium mb-2">🟢 做多计划</div>
+                    <div className="text-white text-sm mb-1">进场区：{tp?.longPlan?.entryLow}–{tp?.longPlan?.entryHigh}</div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-300">
+                      <div>目标1：{tp?.longPlan?.tp1}</div>
+                      <div>目标2：{tp?.longPlan?.tp2}</div>
+                      <div>止损：{tp?.longPlan?.sl}</div>
+                      <div>盈亏比：{(() => {
+                        const r = tp?.longPlan?.rrNum ?? 0;
+                        const cls = r >= 3 ? 'text-up' : r >= 2 ? 'text-up' : 'text-amber-400';
+                        const icon = r >= 3 ? '🏆 ' : r < 2 ? '⚠️ ' : '';
+                        return <span className={`font-semibold ${cls}`}>{icon}{tp?.longPlan?.rr}</span>;
+                      })()}</div>
                     </div>
                   </div>
-                  <div className="border border-down/40 rounded-lg p-3">
-                    <div className="text-down font-medium mb-2">做空需满足</div>
-                    <ul className="space-y-1 text-gray-300 text-sm list-disc list-inside">
-                      {tp?.short.map((line, idx) => (
-                        <li key={idx}>{line}</li>
-                      ))}
-                    </ul>
-                    <div className="mt-3 text-xs text-gray-300 space-y-1">
-                      <div>进场区：{tp?.shortPlan?.entryLow}–{tp?.shortPlan?.entryHigh}</div>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                        <div>目标1：{tp?.shortPlan?.tp1}</div>
-                        <div>目标2：{tp?.shortPlan?.tp2}</div>
-                        <div>止损：{tp?.shortPlan?.sl}</div>
-                        <div>盈亏比：{tp?.shortPlan?.rr}</div>
-                      </div>
+                  <div className="border border-down/30 rounded-lg p-3">
+                    <div className="text-down font-medium mb-2">🔴 做空计划</div>
+                    <div className="text-white text-sm mb-1">进场区：{tp?.shortPlan?.entryLow}–{tp?.shortPlan?.entryHigh}</div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-300">
+                      <div>目标1：{tp?.shortPlan?.tp1}</div>
+                      <div>目标2：{tp?.shortPlan?.tp2}</div>
+                      <div>止损：{tp?.shortPlan?.sl}</div>
+                      <div>盈亏比：{(() => {
+                        const r = tp?.shortPlan?.rrNum ?? 0;
+                        const cls = r >= 3 ? 'text-down' : r >= 2 ? 'text-down' : 'text-amber-400';
+                        const icon = r >= 3 ? '🏆 ' : r < 2 ? '⚠️ ' : '';
+                        return <span className={`font-semibold ${cls}`}>{icon}{tp?.shortPlan?.rr}</span>;
+                      })()}</div>
                     </div>
                   </div>
                 </div>
-                <div className="mt-3 text-gray-500 text-xs">{tp?.invalidation}</div>
+
+                {/* 条件区（下） */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                  <div className="border border-up/20 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-up text-xs font-medium">做多条件</span>
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                          <div className="h-full bg-up rounded-full" style={{ width: `${(tp?.long?.filter((c) => c.ok).length ?? 0) / (tp?.long?.length || 1) * 100}%` }} />
+                        </div>
+                        <span className="text-xs text-gray-400">{tp?.long?.filter((c) => c.ok).length ?? 0}/{tp?.long.length ?? 0}</span>
+                      </div>
+                    </div>
+                    <ul className="space-y-1 text-xs">
+                      {tp?.long.map((c, idx) => (
+                        <li key={idx} className="flex items-start gap-1.5">
+                          <span className={`shrink-0 ${c.ok ? 'text-up' : 'text-gray-600'}`}>{c.ok ? '✓' : '○'}</span>
+                          <span className={c.ok ? 'text-gray-200' : 'text-gray-500'}>{c.text}{c.warn ? <span className="text-amber-400 ml-1">⚠️{c.warn}</span> : null}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="border border-down/20 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-down text-xs font-medium">做空条件</span>
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                          <div className="h-full bg-down rounded-full" style={{ width: `${((tp?.short?.filter((c) => c.ok).length ?? 0) / (tp?.short?.length || 1)) * 100}%` }} />
+                        </div>
+                        <span className="text-xs text-gray-400">{tp?.short?.filter((c) => c.ok).length ?? 0}/{tp?.short.length ?? 0}</span>
+                      </div>
+                    </div>
+                    <ul className="space-y-1 text-xs">
+                      {tp?.short.map((c, idx) => (
+                        <li key={idx} className="flex items-start gap-1.5">
+                          <span className={`shrink-0 ${c.ok ? 'text-down' : 'text-gray-600'}`}>{c.ok ? '✓' : '○'}</span>
+                          <span className={c.ok ? 'text-gray-200' : 'text-gray-500'}>{c.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-start gap-1.5">
+                  <span className="text-amber-400 shrink-0">⚠️</span>
+                  <span className="text-gray-300 text-xs">{tp?.invalidation}</span>
+                </div>
               </div>
             </div>
 
