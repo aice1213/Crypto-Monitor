@@ -7,6 +7,8 @@ import {
   buildObvPane,
   buildPlanLevels,
   buildRsiSeries,
+  emaPeriodsFor,
+  EMA_PERIODS,
   macdWarmupBars,
 } from './chartData';
 
@@ -199,5 +201,27 @@ describe('计划价位线', () => {
     const levels = buildPlanLevels(plan({ tp2: NaN }));
     expect(levels.some((l) => l.title === 'TP2')).toBe(false);
     expect(levels).toHaveLength(2);
+  });
+});
+
+describe('EMA 双线周期配置', () => {
+  it('各周期均配置了快线/慢线两条，且快线 < 慢线', () => {
+    expect(Object.keys(EMA_PERIODS).sort()).toEqual(['15m', '1m', '5m']);
+    for (const [fast, slow] of Object.values(EMA_PERIODS)) {
+      expect(fast).toBeGreaterThan(0);
+      expect(slow).toBeGreaterThan(fast);
+    }
+  });
+
+  it('1m=9/21, 5m=9/20, 15m=20/50（Aice 配置）', () => {
+    expect(EMA_PERIODS['1m']).toEqual([9, 21]);
+    expect(EMA_PERIODS['5m']).toEqual([9, 20]);
+    expect(EMA_PERIODS['15m']).toEqual([20, 50]);
+  });
+
+  it('未登记周期回退到 15m 的 20/50', () => {
+    expect(emaPeriodsFor('30m')).toEqual([20, 50]);
+    expect(emaPeriodsFor('1h')).toEqual([20, 50]);
+    expect(emaPeriodsFor('1m')).toEqual([9, 21]);
   });
 });

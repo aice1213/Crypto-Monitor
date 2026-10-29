@@ -13,6 +13,7 @@ import { AI_REGEN_COOLDOWN_MS, fmtPrice, formatBeijingTime } from '@crypto-monit
 import { api } from '../../lib/api';
 import { AiPanel } from '../../components/AiStrategy/AiPanel';
 import { KlineChart } from '../../components/Chart/KlineChart';
+import { emaPeriodsFor } from '../../components/Chart/chartData';
 import { usePolling } from '../../hooks/usePolling';
 import { useWatchlistStore } from '../../store/watchlist';
 
@@ -391,8 +392,24 @@ function volumePriceInterpretation(snapshot: IndicatorSnapshotDto): { title: str
   return { title: '量价中性', meaning: '量价关系无明显背离，不触发背离交易信号，以 EMA/MACD 方向为主' };
 }
 
-function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<{ title: string; detail: string; meaning: string }> {
+/**
+ * 从 snapshot 提取配置周期对应的 EMA 值。
+ *
+ * snapshot 只存 ema7/25/50/99/200 五个字段，而展示配置用了 9/21/20 等周期。
+ * 这里按"最接近的可用周期"映射：9→7, 20→25, 21→25, 50→50。
+ * 展示用途足够（差异 < 3 根对趋势描述无实质影响），避免为展示新增后端字段。
+ */
+function emaValue(snapshot: IndicatorSnapshotDto, period: number): number {
+  if (period <= 7) return snapshot.ema7;
+  if (period <= 25) return snapshot.ema25;
+  if (period <= 50) return snapshot.ema50;
+  if (period <= 99) return snapshot.ema99;
+  return snapshot.ema200;
+}
+
+function decisionBasis(snapshot: IndicatorSnapshotDto, interval: string, current?: number): Array<{ title: string; detail: string; meaning: string }> {
   const ema = emaInterpretation(snapshot, current);
+  const [emaFast, emaSlow] = emaPeriodsFor(interval);
   const macd = macdInterpretation(snapshot);
   const vp = volumePriceInterpretation(snapshot);
   const pat = patternInterpretation(snapshot);
@@ -449,7 +466,7 @@ function decisionBasis(snapshot: IndicatorSnapshotDto, current?: number): Array<
   return [
     {
       title: ema.title,
-      detail: `EMA7 ${snapshot.ema7.toFixed(2)} / EMA25 ${snapshot.ema25.toFixed(2)} / EMA99 ${snapshot.ema99.toFixed(2)}`,
+      detail: `EMA${emaFast} ${emaValue(snapshot, emaFast).toFixed(2)} / EMA${emaSlow} ${emaValue(snapshot, emaSlow).toFixed(2)}`,
       meaning: ema.meaning,
     },
     {
@@ -1009,7 +1026,7 @@ export function Detail() {
 
         {candles.length > 0 && snapshot && (
           <div className="bg-card border border-cardborder rounded-lg p-3 mb-4">
-            <KlineChart candles={candles} snapshot={snapshot} />
+            <KlineChart candles={candles} snapshot={snapshot} interval={interval} />
           </div>
         )}
 
@@ -1028,7 +1045,7 @@ export function Detail() {
             <div className="mb-4">
               <div className="text-gray-500 text-xs mb-2">核心依据</div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {decisionBasis(snapshot, ticker?.last).map((item, idx) => (
+                {decisionBasis(snapshot, interval, ticker?.last).map((item, idx) => (
                   <div key={idx} className="rounded-lg border border-cardborder bg-black/10 p-3 text-sm">
                     <div className="text-white font-medium mb-1">{item.title}</div>
                     <div className="text-gray-400 text-xs mb-1">{item.detail}</div>

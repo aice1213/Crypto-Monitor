@@ -20,6 +20,7 @@ import {
   buildMacdPane,
   buildPatternMarkers,
   buildPlanLevels,
+  emaPeriodsFor,
   type EntryBand,
 } from './chartData';
 
@@ -75,14 +76,14 @@ function createEntryBandPrimitive(getBand: () => EntryBand | null): ISeriesPrimi
 interface Props {
   candles: CandleDto[];
   snapshot: IndicatorSnapshotDto;
+  interval: string;
 }
 
 type ChartRef = {
   chart: IChartApi;
   candleSeries: ReturnType<IChartApi['addCandlestickSeries']>;
-  ema7: ReturnType<IChartApi['addLineSeries']>;
-  ema25: ReturnType<IChartApi['addLineSeries']>;
-  ema99: ReturnType<IChartApi['addLineSeries']>;
+  emaFast: ReturnType<IChartApi['addLineSeries']>;
+  emaSlow: ReturnType<IChartApi['addLineSeries']>;
   macdHist: ReturnType<IChartApi['addHistogramSeries']>;
   dif: ReturnType<IChartApi['addLineSeries']>;
   dea: ReturnType<IChartApi['addLineSeries']>;
@@ -97,7 +98,7 @@ const PANE_MARGINS = {
 
 const CHART_HEIGHT = 460;
 
-export function KlineChart({ candles, snapshot }: Props) {
+export function KlineChart({ candles, snapshot, interval }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ChartRef | null>(null);
   const fitOnceRef = useRef(false);
@@ -141,9 +142,10 @@ export function KlineChart({ candles, snapshot }: Props) {
       wickDownColor: '#ef5350',
     });
 
-    const ema7 = chart.addLineSeries({ color: '#ffb300', lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
-    const ema25 = chart.addLineSeries({ color: '#29b6f6', lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
-    const ema99 = chart.addLineSeries({ color: '#ab47bc', lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
+    // ---- EMA 双线（按周期配置，只展示两条）----
+    const [fastPeriod, slowPeriod] = emaPeriodsFor(interval);
+    const emaFast = chart.addLineSeries({ color: '#ffb300', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: `EMA${fastPeriod}` });
+    const emaSlow = chart.addLineSeries({ color: '#29b6f6', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: `EMA${slowPeriod}` });
 
     // ---- MACD 副图 ----
     // 顺序很重要：必须先由 series 以该 priceScaleId 创建出刻度，才能对其 applyOptions，
@@ -160,9 +162,8 @@ export function KlineChart({ candles, snapshot }: Props) {
     chartRef.current = {
       chart,
       candleSeries,
-      ema7,
-      ema25,
-      ema99,
+      emaFast,
+      emaSlow,
       macdHist,
       dif,
       dea,
@@ -181,7 +182,7 @@ export function KlineChart({ candles, snapshot }: Props) {
       chart.remove();
       chartRef.current = null;
     };
-  }, []);
+  }, [interval]);
 
   useEffect(() => {
     const ref = chartRef.current;
@@ -199,9 +200,9 @@ export function KlineChart({ candles, snapshot }: Props) {
       })),
     );
 
-    ref.ema7.setData(buildEmaSeries(candles, 7).map((p) => ({ time: toTime(p.time), value: p.value })));
-    ref.ema25.setData(buildEmaSeries(candles, 25).map((p) => ({ time: toTime(p.time), value: p.value })));
-    ref.ema99.setData(buildEmaSeries(candles, 99).map((p) => ({ time: toTime(p.time), value: p.value })));
+    const [fastPeriod, slowPeriod] = emaPeriodsFor(interval);
+    ref.emaFast.setData(buildEmaSeries(candles, fastPeriod).map((p) => ({ time: toTime(p.time), value: p.value })));
+    ref.emaSlow.setData(buildEmaSeries(candles, slowPeriod).map((p) => ({ time: toTime(p.time), value: p.value })));
 
     const macdPane = buildMacdPane(candles);
     ref.macdHist.setData(macdPane.hist.map((p) => ({ time: toTime(p.time), value: p.value, color: p.color })));

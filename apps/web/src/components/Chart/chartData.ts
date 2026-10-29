@@ -45,6 +45,24 @@ export function buildEmaSeries(candles: CandleDto[], period: number): LinePoint[
 }
 
 /**
+ * 各周期展示的 EMA 双线配置（快线/慢线周期）。
+ *
+ * 只控制**图表展示与 EMA 卡片显示**，不影响后端策略计算（ema7/25/50/99/200
+ * 仍在 snapshot 中供 emaStructure / supportResistance / maStrategy 等消费）。
+ * 按 Aice 配置：1m=9/21, 5m=9/20, 15m=20/50。
+ */
+export const EMA_PERIODS: Record<string, [number, number]> = {
+  '1m': [9, 21],
+  '5m': [9, 20],
+  '15m': [20, 50],
+};
+
+/** 取周期对应的 EMA 双线配置；未登记周期回退到 15m 的 20/50 */
+export function emaPeriodsFor(interval: string): [number, number] {
+  return EMA_PERIODS[interval] ?? EMA_PERIODS['15m']!;
+}
+
+/**
  * MACD 副图（柱 + DIF + DEA）。
  *
  * 引擎为保证 `hist = (dif − dea) × 2` 自洽，在 DEA 预热期令 `dea = dif`、`hist = 0`。
