@@ -598,3 +598,144 @@ export interface LiquidityData {
   /** live=false 时的原因 */
   reason?: string;
 }
+
+// ─────────────────────────────────────────────
+// 价格异动通知（推送设置页 + 推送服务）
+// 开发交付文档 V1.1.0 §2 数据契约
+// ─────────────────────────────────────────────
+
+/** 触发模式（文档 §2.2） */
+export type TriggerMode =
+  | 'PERCENT_ONLY'   // 仅窗口涨跌幅
+  | 'KEY_CONFIRM'    // 关键位突破 + 偏离确认（推荐默认）
+  | 'DUAL_CONFIRM';  // 窗口涨跌幅 + 关键位突破同时满足
+
+/** 阈值来源（文档 §4.7 冷启动降级） */
+export type ThresholdSource =
+  | 'RV'             // RV20 可用，公式值
+  | 'CLASS_FALLBACK' // 分类兜底
+  | 'DEFAULT';       // 默认值，允许手动输入
+
+/** 分类兜底档位（文档 §4.7） */
+export type VolatilityClass = 'HIGH' | 'MID' | 'LOW';
+
+/** 推送条件配置（文档 §2.2 PushCondition） */
+export interface PushCondition {
+  mode: TriggerMode;
+  /** 窗口分钟数，默认 5，可配 1-15 */
+  windowMinutes: number;
+  /** AUTO=服务端计算推荐值；MANUAL=用户覆盖值 */
+  thresholdMode: 'AUTO' | 'MANUAL';
+  /** 推荐阈值（%），AUTO 时由服务端计算返回 */
+  autoThreshold?: number;
+  /** 用户覆盖值（%），MANUAL 时生效 */
+  manualThreshold?: number;
+  /** 服务端返回，便于展示与日志 */
+  volatilityMultiplier?: number;
+  /** 标的 20 日已实现波动率 */
+  rv20?: number;
+  /** 兼容旧字段，MANUAL 时使用 */
+  upPercent?: number;
+  downPercent?: number;
+  keyPrice?: number;
+  /** 关键位来源 */
+  keyPriceSource?: 'MANUAL' | 'SUPPORT_RESISTANCE' | 'TREND';
+  /** 关键位确认带（%）= base_key × multiplier，服务端计算 */
+  keyPriceThreshold?: number;
+  /** 成交量确认，默认 true */
+  volumeConfirm?: boolean;
+  /** 成交量倍数，默认 1.5 */
+  volumeMultiplier?: number;
+  /** 方向一致性，默认 true */
+  directionConsistency?: boolean;
+}
+
+/** 推送标的目标（文档 §2.2 PushTargetDto） */
+export interface PushTargetDto {
+  id: string;
+  /** 归一化如 BTC_USDT */
+  symbol: string;
+  exchange: 'GATEIO';
+  enabled: boolean;
+  conditions: PushCondition;
+  lastPushTime: number | null;
+  cooldownState: 'READY' | 'COOLING';
+  updatedAt: number;
+}
+
+/** 推荐阈值响应（文档 §2.2 ThresholdRecommendationDto） */
+export interface ThresholdRecommendationDto {
+  symbol: string;
+  /** 当前 base（%） */
+  baseThreshold: number;
+  /** 标的 20 日 RV */
+  rv20: number | null;
+  btcRv20: number | null;
+  /** clip 后 */
+  multiplier: number | null;
+  /** 最终推荐（%） */
+  recommendedThreshold: number;
+  source: ThresholdSource;
+  classFallback?: VolatilityClass;
+  /** 关键位确认带（%） */
+  keyPriceThreshold: number;
+  computedAt: number;
+  /** 数据不足说明 */
+  note?: string;
+}
+
+/** 推送通道配置（文档 §2.2 ChannelConfigDto） */
+export interface ChannelConfigDto {
+  id: string;
+  type: 'DINGTALK' | 'FEISHU';
+  groupName: string;
+  webhookConfigured: boolean;
+  securityType: 'SIGN' | 'KEYWORD' | 'IP';
+  keyword?: string;
+  signConfigured: boolean;
+  enabled: boolean;
+  status: 'OK' | 'ABNORMAL' | 'PAUSED';
+}
+
+/** 前端命中上报请求（文档 §3.2） */
+export interface PushTriggerRequest {
+  symbol: string;
+  price: number;
+  changePercent: number;
+  thresholdUsed: number;
+  multiplierUsed?: number;
+  keyPrice?: number;
+  triggerMode: TriggerMode;
+  /** 触发源：前端窗口计算 / Cron 兜底 */
+  triggerType: 'CLIENT_WINDOW' | 'CRON_FALLBACK';
+  clientTs: number;
+}
+
+/** 推送日志（文档 §10.3 push_logs 表） */
+export interface PushLogDto {
+  id: string;
+  targetId: string;
+  symbol: string;
+  channelType: 'DINGTALK' | 'FEISHU';
+  channelId: string;
+  triggerType: 'CLIENT_WINDOW' | 'CRON_FALLBACK';
+  triggerMode: TriggerMode;
+  price: number;
+  changePercent: number;
+  keyPrice: number | null;
+  thresholdUsed: number;
+  multiplierUsed: number | null;
+  /** SENT / MERGED / FAILED（文档 §6.3） */
+  result: 'SENT' | 'MERGED' | 'FAILED';
+  errorCode?: string;
+  errorMsg?: string;
+  ts: number;
+}
+
+/** 统一 API 信封（文档 §2.1） */
+export interface ApiEnvelope<T> {
+  code: number;
+  data: T;
+  msg?: string;
+  ts: number;
+}
