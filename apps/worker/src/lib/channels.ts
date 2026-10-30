@@ -37,6 +37,7 @@ export interface ChannelSendResult {
 
 /** 通道配置（解密后的运行时形状） */
 export interface RuntimeChannel {
+  id: string;
   type: 'DINGTALK' | 'FEISHU';
   webhook: string;
   secret?: string;

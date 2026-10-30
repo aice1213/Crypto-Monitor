@@ -11,6 +11,7 @@ import type {
   MacroFundingData,
   LiquidationHeatmap,
   LiquidityData,
+  PushTriggerRequest,
 } from '@crypto-monitor/shared';
 import { isSupportedInterval, normalizeAndValidate } from '@crypto-monitor/shared';
 import { computeSnapshot } from '@crypto-monitor/indicators';
@@ -31,6 +32,8 @@ import {
   getLiquidationHeatmap,
   getLiquidityData,
 } from './macro.js';
+import { handlePushTrigger } from './pushRoute.js';
+import { runCronFallback } from './cron.js';
 
 interface Env {
   CRYPTO_CACHE: KVNamespace;
@@ -41,6 +44,12 @@ interface Env {
   AI_DAILY_LIMIT: string;
   OPENAI_API_KEY: string;
   ALLOWED_ORIGINS: string;
+  /** 推送服务 D1 绑定（§13.1，需在 wrangler.toml 配置） */
+  PUSH_D1?: D1Database;
+  /** 全局推送开关（§13.1） */
+  PUSH_ENABLED?: string;
+  /** AES-GCM 主密钥（32B Base64，Workers Secret，§13.1） */
+  PUSH_ENC_KEY?: string;
 }
 
 /**
@@ -274,6 +283,31 @@ export default {
       return json(ok(result), 200, corsOrigin);
     }
 
+    // ===== 推送服务：/api/push/trigger（§3.2 前端窗口上报）=====
+    if (route === 'push' && param === 'trigger' && request.method === 'POST') {
+      if (!rateLimit()) return json(err(429, '限流中，请稍后重试'), 429, corsOrigin);
+      if (!env.PUSH_D1) {
+        return json(err(503, '推送服务未配置（PUSH_D1 未绑定）'), 503, corsOrigin);
+      }
+      const body = (await request.json()) as PushTriggerRequest;
+      const { symbol, valid } = normalizeAndValidate(body.symbol);
+      if (!valid) return json(err(400, '无效的交易对符号'), 400, corsOrigin);
+      if (body.changePercent == null || !Number.isFinite(body.changePercent)) {
+        return json(err(400, 'changePercent 必填'), 400, corsOrigin);
+      }
+      try {
+        const outcome = await handlePushTrigger({ ...body, symbol }, {
+          d1: env.PUSH_D1,
+          kv: env.CRYPTO_CACHE,
+          pushEncKey: env.PUSH_ENC_KEY ?? '',
+          pushEnabled: env.PUSH_ENABLED,
+        });
+        return json(outcome, outcome.code === 400 ? 400 : 200, corsOrigin);
+      } catch (e) {
+        return json(err(500, `推送处理异常：${(e as Error).message}`), 500, corsOrigin);
+      }
+    }
+
     // ===== 宏观看板 =====
     if (route === 'macro') {
       const base = env.GATEIO_BASE || 'https://api.gateio.ws';
@@ -369,5 +403,20 @@ export default {
     }
 
     return json(err(404, 'Not Found'), 404, corsOrigin);
+  },
+
+  /** Cron 兜底（§3.3）：每分钟扫描启用标的，页面关闭场景降级触发 */
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    if (env.PUSH_ENABLED === 'false') return;
+    if (!env.PUSH_D1) return;
+    try {
+      await runCronFallback({
+        d1: env.PUSH_D1,
+        kv: env.CRYPTO_CACHE,
+        encKey: env.PUSH_ENC_KEY ?? '',
+      });
+    } catch {
+      // Cron 失败不抛出，避免下次调度受影响
+    }
   },
 };

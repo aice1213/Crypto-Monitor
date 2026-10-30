@@ -102,6 +102,7 @@ describe('buildPushText 文案模板（§8）', () => {
 
 describe('buildDingTalkBody（§6.1）', () => {
   const channel: RuntimeChannel = {
+    id: 'ch-dingtalk-1',
     type: 'DINGTALK',
     webhook: 'https://oapi.dingtalk.com/robot/send?access_token=abc',
     securityType: 'SIGN',
@@ -137,6 +138,7 @@ describe('buildDingTalkBody（§6.1）', () => {
 
 describe('buildFeishuBody（§6.2）', () => {
   const channel: RuntimeChannel = {
+    id: 'ch-feishu-1',
     type: 'FEISHU',
     webhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/abc',
     securityType: 'SIGN',
