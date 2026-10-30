@@ -139,6 +139,10 @@ export const PUSH_OVERIDE_HIGH_RATIO = 3.0;  // > 推荐 3 倍 → 可能漏报
 export const PUSH_RV_LOOKBACK = 20;
 /** 年化因子：日线 √365（加密 7×24）（文档 §4.2） */
 export const PUSH_ANNUALIZATION_DAILY = Math.sqrt(365);
+/** 年化因子：4h K 线 √2190 = √(365×6)（文档 §4.7 降级，4h→√2190 为 P0 评估报告问题#1 补的口径） */
+export const PUSH_ANNUALIZATION_4H = Math.sqrt(365 * 6);
+/** 年化因子：1h K 线 √8760 = √(365×24)（文档 §4.7 降级） */
+export const PUSH_ANNUALIZATION_1H = Math.sqrt(365 * 24);
 
 /* ── 冷静期与去重（文档 §5）── */
 
